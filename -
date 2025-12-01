@@ -1,0 +1,15 @@
+import mongoose from 'mongoose'
+
+const ClassPostCommentSchema = new mongoose.Schema(
+  {
+    postId: { type: mongoose.Schema.Types.ObjectId, ref: 'ClassPost', required: true },
+    authorId: { type: String, required: true }, // Clerk id
+    text: { type: String, required: true },
+  },
+  { timestamps: { createdAt: true, updatedAt: true } }
+)
+
+const ClassPostComment = mongoose.model('ClassPostComment', ClassPostCommentSchema)
+export default ClassPostComment
+
+
