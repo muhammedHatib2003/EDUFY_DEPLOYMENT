@@ -13,6 +13,8 @@ import classroomsRouter from './routes/classrooms.js'
 import notificationsRouter from './routes/notifications.js'
 import aiRouter from './routes/ai.js'
 import questionsRouter from './routes/questions.js'
+import coursesRouter from './routes/courses.js'
+import scheduleRouter from './routes/schedule.js'
 
 
 const app = express()
@@ -58,6 +60,8 @@ if (!requireAuthMw) {
   app.use('/api/classrooms', classroomsRouter)
   app.use('/api/notifications', notificationsRouter)
   app.use('/api/ai', aiRouter)
+  app.use('/api/courses', coursesRouter)
+  app.use('/api/schedule', scheduleRouter)
 } else {
   app.use('/api/users', requireAuthMw, usersRouter)
   app.use('/api/friends', requireAuthMw, friendsRouter)
@@ -69,6 +73,8 @@ if (!requireAuthMw) {
   app.use('/api/classrooms', requireAuthMw, classroomsRouter)
   app.use('/api/notifications', requireAuthMw, notificationsRouter)
   app.use('/api/ai', requireAuthMw, aiRouter)
+  app.use('/api/courses', coursesRouter)
+  app.use('/api/schedule', requireAuthMw, scheduleRouter)
 }
 
 async function start() {

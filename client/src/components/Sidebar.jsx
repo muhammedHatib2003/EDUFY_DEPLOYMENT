@@ -1,22 +1,30 @@
 import { Link, useLocation } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import ThemeToggle from "./ThemeToggle.jsx";
-import { 
+import {
   Home,
-  MessageSquare, 
-  Users, 
-  UserRound, 
+  LayoutDashboard,
+  MessageSquare,
+  Users,
+  UserRound,
   Video,
   Bot,
-} from "lucide-react"; 
+  BookOpen,
+  FileText,
+  ListChecks,
+} from "lucide-react";
 
 const navItems = [
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { to: "/profile", label: "Profile", icon: <UserRound size={18} /> },
+  { to: "/todos", label: "To-do", icon: <ListChecks size={18} /> },
   { to: "/feed", label: "Feed", icon: <Home size={18} /> },
   { to: "/friends", label: "Friends", icon: <Users size={18} /> },
   { to: "/chat", label: "Chat", icon: <MessageSquare size={18} /> },
   { to: "/groq", label: "Groq Assistant", icon: <Bot size={18} /> },
   { to: "/classrooms", label: "Classrooms", icon: <Video size={18} /> },
+  { to: "/courses", label: "Courses", icon: <BookOpen size={18} /> },
+  { to: "/summaries", label: "Summaries", icon: <FileText size={18} /> },
 ];
 
 const NavItem = ({ to, label, icon }) => {
@@ -27,9 +35,9 @@ const NavItem = ({ to, label, icon }) => {
     <Link
       to={to}
       className={`flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition 
-      ${active 
-        ? "bg-base-300 text-primary border-r-4 border-primary" 
-        : "hover:bg-base-200"}`
+      ${active
+          ? "bg-base-300 text-primary border-r-4 border-primary"
+          : "hover:bg-base-200"}`
       }
     >
       <span>{icon}</span>

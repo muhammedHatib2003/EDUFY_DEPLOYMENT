@@ -1,10 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import api from '../lib/api'
 import * as VideoSDK from '@stream-io/video-react-sdk'
 import '@stream-io/video-react-sdk/dist/css/styles.css'
+import { AiService } from '../services/ai'
+import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
 
-export default function VideoCall({ onClose, callId: callIdProp, mode = 'video', channel, friends = [], onOpen }) {
+const SUMMARY_STORAGE_KEY = 'graedufy_voice_summaries'
+
+function saveSummaryLocally(entry) {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(SUMMARY_STORAGE_KEY)
+    const list = raw ? JSON.parse(raw) : []
+    const next = Array.isArray(list) ? list : []
+    next.unshift(entry)
+    window.localStorage.setItem(SUMMARY_STORAGE_KEY, JSON.stringify(next.slice(0, 50)))
+  } catch (err) {
+    console.error('Failed to store summary', err)
+  }
+}
+
+export default function VideoCall({ onClose, callId: callIdProp, callName: callNameProp, mode = 'video', channel, friends = [], onOpen, isTeacher = false, screenShareOnlyForTeacher = false }) {
   const { getToken } = useAuth()
   const [client, setClient] = useState(null)
   const [call, setCall] = useState(null)
@@ -14,6 +31,19 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
   const [selectedToAdd, setSelectedToAdd] = useState({})
   const [isAudioMuted, setIsAudioMuted] = useState(false)
   const [isVideoMuted, setIsVideoMuted] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [audioBlob, setAudioBlob] = useState(null)
+  const [summary, setSummary] = useState('')
+  const [transcript, setTranscript] = useState('')
+  const [summaryTopic, setSummaryTopic] = useState('')
+  const [summaryError, setSummaryError] = useState('')
+  const [processingSummary, setProcessingSummary] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const recorderRef = useRef(null)
+  const [audioDataUrl, setAudioDataUrl] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const callLabel = callNameProp || callIdProp || 'Active Call'
+  const canShareScreen = mode !== 'voice' && (!screenShareOnlyForTeacher || isTeacher)
 
   const channelMemberIds = useMemo(() => {
     try {
@@ -112,23 +142,132 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
   }
 
   const toggleScreenShare = async () => {
+    if (!call || !canShareScreen) return
     try {
-      if (call) {
-        const screenShareEnabled = call.publishVideoStream && call.publishVideoStream.screen
-        if (screenShareEnabled) {
-          await call.stopPublish()
-        } else {
-          await call.publishVideoStream({ screen: true })
-        }
+      const sharing = call.screenShare?.state?.status === 'enabled'
+      if (sharing) {
+        await call.screenShare.disable(true)
+      } else {
+        await call.screenShare.enable()
       }
     } catch (error) {
       console.error('Failed to toggle screen share:', error)
+      setError('Unable to toggle screen share. Please check permissions and try again.')
     }
   }
 
+  const stopRecordingTracks = () => {
+    const rec = recorderRef.current
+    if (rec?.stream) {
+      rec.stream.getTracks().forEach((t) => t.stop())
+    }
+    recorderRef.current = null
+  }
+
+  const startRecording = async () => {
+    setSummaryError('')
+    setSummary('')
+    setTranscript('')
+    setAudioBlob(null)
+    setAudioDataUrl('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 }
+      const recorder = new MediaRecorder(stream, options)
+      const chunks = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data)
+      }
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' })
+        setAudioBlob(blob)
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          const result = reader.result
+          if (typeof result === 'string') {
+            setAudioDataUrl(result)
+            try {
+              const key = `live-audio-${callIdProp || 'default'}`
+              window.localStorage.setItem(key, result)
+            } catch {}
+          }
+        }
+        reader.readAsDataURL(blob)
+        stopRecordingTracks()
+        setIsRecording(false)
+      }
+      recorderRef.current = recorder
+      recorder.start()
+      setIsRecording(true)
+    } catch (err) {
+      console.error('record error', err)
+      setSummaryError('Microphone access denied or unavailable.')
+    }
+  }
+
+  const stopRecording = () => {
+    const recorder = recorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+  }
+
+  const summarizeAudio = async () => {
+    if (!audioBlob || !audioDataUrl) {
+      setSummaryError('Record audio first.')
+      return
+    }
+    const approxBytes = Math.ceil((audioDataUrl.length * 3) / 4)
+    if (approxBytes > 12 * 1024 * 1024) {
+      setSummaryError('Recording is too large. Please record a shorter clip (under ~12MB).')
+      return
+    }
+    setProcessingSummary(true)
+    setSummaryError('')
+    try {
+      const token = await getToken()
+      const { data } = await AiService.voiceSummary(token, {
+        dataUrl: audioDataUrl,
+        topic: summaryTopic,
+      })
+      setTranscript(data.transcript || '')
+      setSummary(data.summary || '')
+      const entry = {
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+        callId: callIdProp || 'graedufy-demo',
+        callName: callLabel,
+        topic: summaryTopic,
+        summary: data.summary || '',
+        transcript: data.transcript || '',
+        createdAt: Date.now(),
+      }
+      saveSummaryLocally(entry)
+    } catch (err) {
+      console.error('summary error', err)
+      setSummaryError(err?.response?.data?.error || err.message || 'Failed to summarize audio')
+    } finally {
+      setProcessingSummary(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => stopRecordingTracks()
+  }, [])
+
+  useEffect(() => {
+    if (!call?.screenShare?.state) return
+    setIsScreenSharing(call.screenShare.state.status === 'enabled')
+    const sub = call.screenShare.state.status$?.subscribe((status) => {
+      setIsScreenSharing(status === 'enabled')
+    })
+    return () => {
+      try { sub?.unsubscribe?.() } catch {}
+    }
+  }, [call])
+
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[9999] p-4">
-      <div className="relative w-full max-w-7xl rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-gradient-to-br from-gray-900 to-black h-[90vh] flex flex-col">
+    <div className={`fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[9999] ${expanded ? 'p-2 sm:p-4' : 'p-4'}`}>
+      <div className={`relative w-full ${expanded ? 'max-w-none h-[95vh]' : 'max-w-7xl h-[90vh]'} rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-gradient-to-br from-gray-900 to-black flex flex-col`}>
         
         {/* Error Alert */}
         {error && (
@@ -160,11 +299,26 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                         {mode === 'voice' ? 'Voice Call' : 'Video Call'}
                       </h2>
                       <div className="text-sm text-white/60">
-                        {callIdProp || 'Active Call'}
+                        {callLabel}
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setExpanded((s) => !s)}
+                        className="btn btn-ghost btn-sm text-white hover:bg-white/20 gap-2"
+                        title={expanded ? 'Collapse call window' : 'Expand call window'}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {expanded ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h8M4 16h8m-6 4l-6-6 6-6m10 12l6-6-6-6" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9h6M4 15h6m5-9h5v5m0 4v5h-5m-4 0H6v-5m0-4V5h5" />
+                          )}
+                        </svg>
+                        {expanded ? 'Collapse' : 'Expand'}
+                      </button>
+
                       {/* Quick Controls */}
                       <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2">
                         {/* Audio Toggle */}
@@ -214,15 +368,17 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                         )}
 
                         {/* Screen Share */}
-                        {mode !== 'voice' && (
+                        {canShareScreen && (
                           <button
                             onClick={toggleScreenShare}
-                            className="btn btn-ghost btn-sm text-white hover:bg-white/20 gap-2"
-                            title="Share screen"
+                            className={`btn btn-sm gap-2 ${isScreenSharing ? 'btn-primary text-white' : 'btn-ghost text-white hover:bg-white/20'}`}
+                            title={isScreenSharing ? 'Stop sharing screen' : 'Share screen'}
+                            aria-pressed={isScreenSharing}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
+                            {isScreenSharing ? 'Sharing' : 'Share'}
                           </button>
                         )}
 
@@ -234,6 +390,29 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                           </svg>
+                        </button>
+                      </div>
+
+                      {/* Live class summary */}
+                      <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2">
+                        <input
+                          type="text"
+                          className="input input-xs input-bordered bg-white/10 text-white placeholder:text-white/60"
+                          placeholder="Topic (optional)"
+                          value={summaryTopic}
+                          onChange={(e) => setSummaryTopic(e.target.value)}
+                        />
+                        {!isRecording ? (
+                          <button className="btn btn-xs btn-primary" onClick={startRecording}>Record</button>
+                        ) : (
+                          <button className="btn btn-xs btn-secondary" onClick={stopRecording}>Stop</button>
+                        )}
+                        <button
+                          className="btn btn-xs btn-accent"
+                          disabled={processingSummary || isRecording || !audioBlob}
+                          onClick={summarizeAudio}
+                        >
+                          {processingSummary ? 'Working...' : 'Send summary'}
                         </button>
                       </div>
 
@@ -267,7 +446,7 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                   {VideoSDK.CallContent ? (
                     <VideoSDK.CallContent />
                   ) : (
-                    <div className="h-full flex flex-col pt-16 pb-24">
+                    <div className="h-full flex flex-col pt-16 pb-24 relative">
                       {VideoSDK.SpeakerLayout ? (
                         <VideoSDK.SpeakerLayout />
                       ) : (
@@ -331,11 +510,12 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                               )}
 
                               {/* Screen Share Control */}
-                              {mode !== 'voice' && (
+                              {canShareScreen && (
                                 <button
                                   onClick={toggleScreenShare}
-                                  className="btn btn-circle btn-lg btn-ghost text-white hover:bg-white/20"
-                                  title="Share your screen"
+                                  className={`btn btn-circle btn-lg ${isScreenSharing ? 'btn-primary text-white' : 'btn-ghost text-white hover:bg-white/20'}`}
+                                  title={isScreenSharing ? 'Stop sharing screen' : 'Share your screen'}
+                                  aria-pressed={isScreenSharing}
                                 >
                                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -355,6 +535,45 @@ export default function VideoCall({ onClose, callId: callIdProp, mode = 'video',
                               </button>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {(isRecording || audioBlob || summary || transcript || summaryError) && (
+                        <div className="absolute bottom-4 right-4 w-full max-w-md bg-black/70 border border-white/10 rounded-xl p-4 backdrop-blur-md space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold text-white text-sm">Live class summary</div>
+                            <div className="text-xs text-white/60">
+                              {isRecording ? 'Recording...' : processingSummary ? 'Processing...' : audioBlob ? 'Ready to send' : ''}
+                            </div>
+                          </div>
+                          {summaryError && <div className="text-error text-sm">{summaryError}</div>}
+                          {transcript && (
+                            <div className="text-xs text-white/70 max-h-16 overflow-auto border border-white/10 rounded p-2">
+                              Transcript: {transcript.slice(0, 400)}{transcript.length > 400 ? '...' : ''}
+                            </div>
+                          )}
+                          {summary && (
+                            <div className="text-sm text-white whitespace-pre-wrap border border-white/10 rounded p-2 bg-white/5 space-y-2">
+                              <div>{summary}</div>
+                              <div className="flex justify-end">
+                                <button
+                                  className="btn btn-xs btn-outline"
+                                  onClick={() => downloadSummaryPdf({
+                                    summary,
+                                    transcript,
+                                    topic: summaryTopic,
+                                    callId: callLabel,
+                                    createdAt: Date.now(),
+                                  })}
+                                >
+                                  Download PDF
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {!summary && !summaryError && audioBlob && !processingSummary && (
+                            <div className="text-xs text-white/60">Audio captured. Click "Send summary" in the header.</div>
+                          )}
                         </div>
                       )}
                     </div>

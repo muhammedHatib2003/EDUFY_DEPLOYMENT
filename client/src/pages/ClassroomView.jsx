@@ -27,12 +27,17 @@ export default function ClassroomView() {
   const [assignments, setAssignments] = useState([])
   const [chatClient, setChatClient] = useState(null)
   const [channel, setChannel] = useState(null)
-  const [call, setCall] = useState({ open: false, id: null, mode: 'video' })
+  const [call, setCall] = useState({ open: false, id: null, mode: 'video', callName: null })
   const [newA, setNewA] = useState({ open: false, title: '', description: '', dueDate: '' })
+  const [assignmentFiles, setAssignmentFiles] = useState([])
+  const [liveNotice, setLiveNotice] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [submittingId, setSubmittingId] = useState(null)
   const [quizzes, setQuizzes] = useState([])
   const [newQz, setNewQz] = useState({ open: false, title: '', description: '', questions: [] })
   const [take, setTake] = useState({ open: false, quiz: null, answers: [], result: null })
+  const MAX_POST_ATTACHMENT_MB = 8
+  const MAX_ASSIGNMENT_FILE_MB = 12
 
   const tabs = useMemo(() => ([
     { key: 'posts', label: 'Posts' },
@@ -84,6 +89,71 @@ export default function ClassroomView() {
   
   useEffect(() => { load() }, [id])
 
+  const startLiveClass = async () => {
+    if (!cls) return
+    const callId = `classroom-${cls.classroom._id}`
+    setTab('live')
+    setCall({ open: true, id: callId, mode: 'video', callName: cls.classroom.name })
+    setLiveNotice(null)
+    if (me?.clerkId === cls.classroom.teacherId) {
+      try {
+        await channel?.sendEvent?.({
+          type: 'live_class_started',
+          callId,
+          classroomId: cls.classroom._id,
+          teacherName: me?.name || me?.handle || cls.teacher?.name || 'Teacher',
+        })
+      } catch (e) {
+        console.error('live class notify error', e)
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!channel) return
+    const unsubscribe = channel.on?.((event) => {
+      if (event?.type === 'live_class_started' && !call.open) {
+        setLiveNotice({
+          callId: event.callId,
+          teacherName: event.user?.id || event.teacherName || 'Teacher',
+        })
+      }
+    }) || (() => {})
+    return () => {
+      try { unsubscribe() } catch {}
+    }
+  }, [channel, call.open])
+
+  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
+  const getUploadUrl = async (file) => {
+    const cloud = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+    const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+    if (cloud && preset) {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('upload_preset', preset)
+      const resource = file.type.startsWith('image')
+        ? 'image'
+        : file.type.startsWith('video')
+          ? 'video'
+          : 'raw'
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/${resource}/upload`, {
+        method: 'POST',
+        body: fd,
+      })
+      const json = await res.json()
+      if (json?.secure_url) return json.secure_url
+      if (json?.url) return json.url
+    }
+    return await fileToDataUrl(file)
+  }
+
   const post = async () => {
     if (!postText.trim() && postMedia.length === 0) return
     
@@ -92,32 +162,21 @@ export default function ClassroomView() {
       const token = await getToken()
       const http = api.authedApi(token)
       let attachments = []
-      
+
       if (postMedia.length > 0) {
-        const cloud = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-        const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
-        for (const file of postMedia) {
-          try {
-            if (cloud && preset) {
-              const fd = new FormData()
-              fd.append('file', file)
-              fd.append('upload_preset', preset)
-              const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/auto/upload`, { 
-                method: 'POST', 
-                body: fd 
-              })
-              const json = await res.json()
-              if (json?.secure_url) attachments.push({ 
-                url: json.secure_url, 
-                type: json?.resource_type === 'video' ? 'video' : 'image' 
-              })
-            } else {
-              const url = URL.createObjectURL(file)
-              const type = file.type.startsWith('video') ? 'video' : 'image'
-              attachments.push({ url, type })
-            }
-          } catch {}
+        const files = postMedia.slice(0, 4)
+        const tooLarge = files.find((f) => f.size > MAX_POST_ATTACHMENT_MB * 1024 * 1024)
+        if (tooLarge) {
+          setError(`Attachments must be under ${MAX_POST_ATTACHMENT_MB}MB each`)
+          setPosting(false)
+          return
         }
+        const encoded = await Promise.all(files.map(async (file) => {
+          const dataUrl = await fileToDataUrl(file)
+          const type = file.type.startsWith('video') ? 'video' : 'image'
+          return { url: dataUrl, type, name: file.name, size: file.size }
+        }))
+        attachments = encoded
       }
       
       await http.post(`/api/classrooms/${id}/posts`, { 
@@ -192,13 +251,26 @@ export default function ClassroomView() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
+      // size guard
+      const tooBig = assignmentFiles.find((f) => f.size > MAX_ASSIGNMENT_FILE_MB * 1024 * 1024)
+      if (tooBig) {
+        setError(`Assignment files must be under ${MAX_ASSIGNMENT_FILE_MB}MB each`)
+        return
+      }
+      const uploadedFiles = assignmentFiles.length ? await Promise.all(
+        assignmentFiles.slice(0, 5).map(async (file) => {
+          try { return await getUploadUrl(file) } catch { return null }
+        })
+      ) : []
       const body = { 
         title: newA.title, 
         description: newA.description, 
-        dueDate: newA.dueDate || undefined 
+        dueDate: newA.dueDate || undefined,
+        files: uploadedFiles.filter(Boolean),
       }
       await http.post(`/api/classrooms/${id}/assignments`, body)
       setNewA({ open: false, title: '', description: '', dueDate: '' })
+      setAssignmentFiles([])
       const res = await http.get(`/api/classrooms/${id}/assignments`)
       setAssignments(res.data.assignments || [])
     } catch (e) { 
@@ -209,26 +281,18 @@ export default function ClassroomView() {
   const uploadAndSubmit = async (assignmentId, file) => {
     if (!file) return
     
-    setUploading(true)
+    if (file.size > MAX_ASSIGNMENT_FILE_MB * 1024 * 1024) {
+      setError(`Submission must be under ${MAX_ASSIGNMENT_FILE_MB}MB`)
+      return
+    }
+
+    setSubmittingId(assignmentId)
     try {
-      let fileURL = ''
-      const cloud = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-      const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
-      
-      if (cloud && preset) {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('upload_preset', preset)
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/auto/upload`, { 
-          method: 'POST', 
-          body: fd 
-        })
-        const json = await res.json()
-        fileURL = json.secure_url
-      }
-      
+      const fileURL = await getUploadUrl(file)
       if (!fileURL) {
-        fileURL = URL.createObjectURL(file)
+        setError('Upload failed. Please try again with a smaller file.')
+        setSubmittingId(null)
+        return
       }
       
       const token = await getToken()
@@ -239,7 +303,7 @@ export default function ClassroomView() {
     } catch (e) { 
       setError(e?.response?.data?.error || e?.message || 'Submit failed') 
     } finally { 
-      setUploading(false) 
+      setSubmittingId(null) 
     }
   }
 
@@ -307,8 +371,9 @@ export default function ClassroomView() {
   )
 
   return (
-    <div className="min-h-screen bg-base-100">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+    <>
+      <div className="min-h-screen bg-base-100">
+        <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -493,7 +558,7 @@ export default function ClassroomView() {
                                 key={index}
                                 src={attachment.url} 
                                 alt="Post attachment" 
-                                className="rounded-lg w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                className="rounded-lg w-full max-h-96 object-contain bg-base-200 cursor-pointer hover:opacity-90 transition-opacity"
                                 onClick={() => window.open(attachment.url, '_blank')}
                               />
                             ) : (
@@ -501,7 +566,7 @@ export default function ClassroomView() {
                                 key={index}
                                 src={attachment.url} 
                                 controls 
-                                className="rounded-lg w-full h-48 object-cover"
+                                className="rounded-lg w-full max-h-96 object-contain bg-base-200"
                               />
                             )
                           ))}
@@ -652,11 +717,7 @@ export default function ClassroomView() {
                 className={`btn gap-2 ${
                   me?.clerkId === cls.classroom.teacherId ? 'btn-primary' : 'btn-secondary'
                 }`}
-                onClick={() => setCall({ 
-                  open: true, 
-                  id: `classroom-${cls.classroom._id}`, 
-                  mode: 'video' 
-                })}
+                onClick={startLiveClass}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -665,12 +726,15 @@ export default function ClassroomView() {
               </button>
             </div>
             {call.open && (
-              <VideoCall 
-                onClose={() => setCall({ open: false, id: null, mode: 'video' })} 
-                callId={call.id} 
-                mode={call.mode} 
-                channel={channel} 
-              />
+            <VideoCall 
+              onClose={() => setCall({ open: false, id: null, mode: 'video', callName: null })} 
+              callId={call.id} 
+              callName={call.callName || cls.classroom.name}
+              mode={call.mode} 
+              channel={channel} 
+              isTeacher={me?.clerkId === cls.classroom.teacherId}
+              screenShareOnlyForTeacher
+            />
             )}
           </div>
         )}
@@ -738,11 +802,11 @@ export default function ClassroomView() {
             {me?.clerkId === cls.classroom.teacherId && (
               <div className="card bg-base-100 border border-base-300 shadow-lg">
                 <div className="card-body">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="card-title text-lg">Create Assignment</h3>
-                    <button 
-                      className="btn btn-sm gap-2"
-                      onClick={() => setNewA(prev => ({ ...prev, open: !prev.open }))}
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="card-title text-lg">Create Assignment</h3>
+                      <button 
+                        className="btn btn-sm gap-2"
+                        onClick={() => setNewA(prev => ({ ...prev, open: !prev.open }))}
                     >
                       {newA.open ? (
                         <>
@@ -801,6 +865,39 @@ export default function ClassroomView() {
                           onChange={(e) => setNewA(prev => ({ ...prev, description: e.target.value }))}
                         />
                       </div>
+
+                      <div className="space-y-2">
+                        <label className="label">
+                          <span className="label-text font-medium">Attachments (optional)</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <label className="btn btn-outline btn-sm gap-2 cursor-pointer">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            Add files
+                            <input
+                              type="file"
+                              className="hidden"
+                              multiple
+                              onChange={(e) => setAssignmentFiles(Array.from(e.target.files || []).slice(0, 5))}
+                            />
+                          </label>
+                          <span className="text-xs text-base-content/60">Up to 5 files, {MAX_ASSIGNMENT_FILE_MB}MB each.</span>
+                        </div>
+                        {assignmentFiles.length > 0 && (
+                          <ul className="text-sm space-y-1">
+                            {assignmentFiles.map((f, idx) => (
+                              <li key={idx} className="flex items-center justify-between gap-2 bg-base-200 rounded px-3 py-1">
+                                <span className="truncate">{f.name || `File ${idx + 1}`}</span>
+                                <button className="btn btn-ghost btn-xs" onClick={() => setAssignmentFiles(prev => prev.filter((_, i) => i !== idx))}>
+                                  Remove
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                       
                       <div className="flex justify-end">
                         <button 
@@ -847,19 +944,63 @@ export default function ClassroomView() {
                             Submissions: {assignment.submissions?.length || 0}
                           </span>
                         </div>
+
+                        {Array.isArray(assignment.files) && assignment.files.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <div className="text-sm font-semibold">Attachments</div>
+                            <div className="flex flex-wrap gap-2">
+                              {assignment.files.map((fileUrl, idx) => (
+                                <a
+                                  key={idx}
+                                  href={fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="btn btn-sm btn-ghost border border-base-300"
+                                >
+                                  Attachment {idx + 1}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Student View */}
                       {me?.clerkId !== cls.classroom.teacherId ? (
                         <div className="text-right">
-                          {assignment.mySubmission ? (
-                            <div className="space-y-1">
-                              <div className="badge badge-success gap-1">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        {assignment.mySubmission ? (
+                          <div className="space-y-2">
+                            <div className="badge badge-success gap-1">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                                 Submitted
                               </div>
+                              {assignment.mySubmission.fileURL && (
+                                <div className="flex items-center gap-2">
+                                  <a
+                                    href={assignment.mySubmission.fileURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  className="btn btn-ghost btn-xs"
+                                >
+                                  View submission
+                                </a>
+                                <label className="btn btn-outline btn-xs cursor-pointer" aria-disabled={submittingId === assignment._id}>
+                                  Replace
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="*/*"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        e.target.value = ''
+                                        uploadAndSubmit(assignment._id, file)
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              )}
                               {assignment.mySubmission.grade && (
                                 <div className="text-sm font-medium">
                                   Grade: {assignment.mySubmission.grade}
@@ -872,8 +1013,8 @@ export default function ClassroomView() {
                               )}
                             </div>
                           ) : (
-                            <label className="btn btn-primary btn-sm gap-2 cursor-pointer">
-                              {uploading ? (
+                            <label className={`btn btn-primary btn-sm gap-2 cursor-pointer ${submittingId === assignment._id ? 'btn-disabled' : ''}`}>
+                              {submittingId === assignment._id ? (
                                 <>
                                   <div className="loading loading-spinner loading-xs"></div>
                                   Uploading...
@@ -889,7 +1030,12 @@ export default function ClassroomView() {
                               <input 
                                 type="file" 
                                 className="hidden" 
-                                onChange={(e) => uploadAndSubmit(assignment._id, e.target.files?.[0])} 
+                                accept="*/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  e.target.value = ''
+                                  uploadAndSubmit(assignment._id, file)
+                                }} 
                               />
                             </label>
                           )}
@@ -1257,7 +1403,36 @@ export default function ClassroomView() {
             )}
           </div>
         )}
+        </div>
       </div>
-    </div>
+      {liveNotice && (
+        <div className="fixed bottom-6 right-6 z-[12000] max-w-sm w-full">
+          <div className="alert alert-info shadow-lg">
+            <div className="flex-1">
+              <div className="font-semibold">Live class is starting</div>
+              <div className="text-sm text-base-content/80">
+                {liveNotice.teacherName || 'Your teacher'} started a session.
+              </div>
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                const callId = liveNotice.callId || (cls ? `classroom-${cls.classroom._id}` : null)
+                if (callId) {
+                  setCall({ open: true, id: callId, mode: 'video', callName: cls?.classroom?.name })
+                  setTab('live')
+                }
+                setLiveNotice(null)
+              }}
+            >
+              Join now
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setLiveNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

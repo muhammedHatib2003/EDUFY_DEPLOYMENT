@@ -12,46 +12,61 @@ import Chat from './pages/Chat.jsx'
 import Classrooms from './pages/Classrooms.jsx'
 import ClassroomView from './pages/ClassroomView.jsx'
 import PublicProfile from './pages/PublicProfile.jsx'
+import Courses from './pages/Courses.jsx'
+import CreateCourse from './pages/CreateCourse.jsx'
+import CourseDetails from './pages/CourseDetails.jsx'
+import LessonViewer from './pages/LessonViewer.jsx'
+import Summaries from './pages/Summaries.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import Todos from './pages/Todos.jsx'
 
 function AuthedLayout() {
   return (
     <NotificationsProvider>
-    <div className="h-full drawer">
-      <input id="app-drawer" type="checkbox" className="drawer-toggle" />
-      <div className="drawer-content flex flex-col">
-        <div className="w-full navbar bg-base-100 border-b min-h-0 h-10 px-2">
-          <div className="flex-none">
-            <label htmlFor="app-drawer" className="btn btn-ghost btn-square btn-xs" aria-label="Toggle sidebar">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-              </svg>
-            </label>
+      <div className="h-full drawer">
+        <input id="app-drawer" type="checkbox" className="drawer-toggle" />
+        <div className="drawer-content flex flex-col">
+          <div className="w-full navbar bg-base-100 border-b min-h-0 h-10 px-2">
+            <div className="flex-none">
+              <label htmlFor="app-drawer" className="btn btn-ghost btn-square btn-xs" aria-label="Toggle sidebar">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+                </svg>
+              </label>
+            </div>
+            <div className="flex-1 pl-2 font-bold text-sm">graEDUFY</div>
+            <div className="flex-none pr-2">
+              <NotificationsBell />
+            </div>
           </div>
-          <div className="flex-1 pl-2 font-bold text-sm">graEDUFY</div>
-          <div className="flex-none pr-2">
-            <NotificationsBell />
+          <div className="flex-1 overflow-auto p-4">
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/todos" element={<Todos />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/profiles/:handle" element={<PublicProfile />} />
+              <Route path="/feed" element={<Feed />} />
+              <Route path="/friends" element={<Friends />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/groq" element={<GroqChat />} />
+              <Route path="/classrooms" element={<Classrooms />} />
+              <Route path="/classrooms/:id" element={<ClassroomView />} />
+              <Route path="/classrooms/:id" element={<ClassroomView />} />
+              <Route path="/courses" element={<Courses />} />
+              <Route path="/courses/create" element={<CreateCourse />} />
+              <Route path="/courses/:id" element={<CourseDetails />} />
+              <Route path="/courses/:id/learn" element={<LessonViewer />} />
+              <Route path="/summaries" element={<Summaries />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
           </div>
         </div>
-        <div className="flex-1 overflow-auto p-4">
-          <Routes>
-            <Route path="/" element={<Navigate to="/profile" replace />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profiles/:handle" element={<PublicProfile />} />
-            <Route path="/feed" element={<Feed />} />
-            <Route path="/friends" element={<Friends />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/groq" element={<GroqChat />} />
-            <Route path="/classrooms" element={<Classrooms />} />
-            <Route path="/classrooms/:id" element={<ClassroomView />} />
-            <Route path="*" element={<Navigate to="/profile" replace />} />
-          </Routes>
+        <div className="drawer-side">
+          <label htmlFor="app-drawer" className="drawer-overlay" aria-label="close sidebar"></label>
+          <Sidebar />
         </div>
       </div>
-      <div className="drawer-side">
-        <label htmlFor="app-drawer" className="drawer-overlay" aria-label="close sidebar"></label>
-        <Sidebar />
-      </div>
-    </div>
     </NotificationsProvider>
   )
 }

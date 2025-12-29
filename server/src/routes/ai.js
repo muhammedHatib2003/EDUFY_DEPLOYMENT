@@ -1,7 +1,20 @@
 import express from 'express'
-import Groq from 'groq-sdk'
+import Groq, { toFile } from 'groq-sdk'
+import axios from 'axios'
 
 const router = express.Router()
+
+const groqApiKey = process.env.GROQ_API_KEY
+const groqClient = groqApiKey ? new Groq({ apiKey: groqApiKey }) : null
+const groqTextModel = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
+
+function requireGroq(res) {
+  if (!groqClient) {
+    res.status(500).json({ error: 'GROQ_API_KEY not configured' })
+    return false
+  }
+  return true
+}
 
 // Sanitize a single string input
 function sanitizeText(value, { max = 8000 } = {}) {
@@ -30,9 +43,16 @@ function toGroqHistory(items) {
 // Helpers for data URLs and extraction
 function parseDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string') return null
-  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-  if (!m) return null
-  return { mime: m[1], base64: m[2] }
+  if (!dataUrl.startsWith('data:')) return null
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx === -1) return null
+  const header = dataUrl.slice(5, commaIdx) // strip "data:"
+  if (!/;base64/i.test(header)) return null
+  const mimeMatch = header.match(/^([^;]+)/)
+  const mime = mimeMatch ? mimeMatch[1] : ''
+  const base64 = dataUrl.slice(commaIdx + 1)
+  if (!base64) return null
+  return { mime, base64 }
 }
 
 function base64ToBuffer(b64) {
@@ -191,6 +211,85 @@ router.post('/chat', async (req, res) => {
     const status = typeof err?.status === 'number' ? err.status : 500
     const message = typeof err?.message === 'string' && err.message ? err.message : 'Failed to generate AI response'
     return res.status(status).json({ error: message })
+  }
+})
+
+router.post('/voice-summary', async (req, res) => {
+  try {
+    if (!requireGroq(res)) return
+    const { audioUrl, dataUrl, topic } = req.body || {}
+    let audioBuffer = null
+    let audioMime = 'audio/webm'
+
+    if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+      const parsed = parseDataUrl(dataUrl)
+      if (!parsed || !/^audio\//.test(parsed.mime)) {
+        return res.status(400).json({ error: 'Invalid audio dataUrl' })
+      }
+      audioBuffer = Buffer.from(parsed.base64, 'base64')
+      audioMime = parsed.mime || audioMime
+    } else if (typeof audioUrl === 'string') {
+      if (!/^https?:\/\//i.test(audioUrl)) {
+        return res.status(400).json({ error: 'audioUrl must be http(s)' })
+      }
+      const audioResp = await axios.get(audioUrl, { responseType: 'arraybuffer' })
+      audioBuffer = Buffer.from(audioResp.data)
+      const ct = audioResp.headers?.['content-type']
+      if (typeof ct === 'string') {
+        audioMime = ct.split(';')[0] || audioMime
+      }
+    } else {
+      return res.status(400).json({ error: 'audioUrl or dataUrl is required' })
+    }
+
+    const maxBytes = 15 * 1024 * 1024
+    if (!audioBuffer || !audioBuffer.length) {
+      return res.status(400).json({ error: 'Audio is empty' })
+    }
+    if (audioBuffer.length > maxBytes) {
+      return res.status(400).json({ error: 'Audio too large for transcription. Please record a shorter clip.' })
+    }
+
+    const audioFile = await toFile(audioBuffer, 'class-audio.webm', { type: audioMime })
+    const transcriptResp = await groqClient.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-large-v3',
+      response_format: 'verbose_json',
+    })
+    const segmentsText = Array.isArray(transcriptResp?.segments)
+      ? transcriptResp.segments.map((s) => s?.text || '').join(' ').trim()
+      : ''
+    const transcriptText = (transcriptResp?.text || '').trim() || segmentsText
+    if (!transcriptText) {
+      return res.status(500).json({ error: 'Transcription failed' })
+    }
+
+    const summaryResp = await groqClient.chat.completions.create({
+      model: groqTextModel,
+      messages: [
+        {
+          role: 'system',
+          content: 'Summarize this live class audio into 4-7 bullet points. Be concise and focus on key takeaways.',
+        },
+        { role: 'user', content: topic ? `${topic}\n\nTranscript:\n${transcriptText.slice(0, 6000)}` : transcriptText.slice(0, 6000) },
+      ],
+      temperature: 0.2,
+      max_tokens: 400,
+    })
+    const summary = summaryResp?.choices?.[0]?.message?.content?.trim()
+    if (!summary) {
+      return res.status(500).json({ error: 'Summary generation failed' })
+    }
+
+    res.json({
+      transcript: transcriptText,
+      summary,
+    })
+  } catch (err) {
+    console.error('voice summary error', err)
+    const status = typeof err?.status === 'number' ? err.status : 500
+    const message = err?.response?.data?.error || err?.message || 'Failed to summarize audio'
+    res.status(status).json({ error: message })
   }
 })
 

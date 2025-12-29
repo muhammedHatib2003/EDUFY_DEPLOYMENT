@@ -84,3 +84,4 @@ Environment variables
   - VITE_CLERK_PUBLISHABLE_KEY: from Clerk
   - VITE_API_URL: http://localhost:5001
   - VITE_DEFAULT_THEME: light | dark | emerald
+  - VITE_STREAM_API_KEY: Stream Chat/Video public key
