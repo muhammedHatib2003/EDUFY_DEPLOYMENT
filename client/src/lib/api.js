@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-export const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+export const apiBase =
+  (import.meta.env.VITE_API_URL || 'http://localhost:5001') + '/api'
 
 export function authedApi(token) {
   return axios.create({
