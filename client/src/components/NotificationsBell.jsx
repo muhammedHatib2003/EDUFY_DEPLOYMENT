@@ -17,7 +17,7 @@ export default function NotificationsBell() {
     try {
       setLoading(true)
       const token = await getToken(); const http = api.authedApi(token)
-      const { data } = await http.get('/api/notifications', { params: { limit: 20 } })
+      const { data } = await http.get('/notifications', { params: { limit: 20 } })
       setItems(Array.isArray(data.notifications) ? data.notifications : [])
     } catch {
       // ignore
@@ -35,7 +35,7 @@ export default function NotificationsBell() {
   const markAllRead = async () => {
     try {
       const token = await getToken(); const http = api.authedApi(token)
-      await http.post('/api/notifications/mark-read', {})
+      await http.post('/notifications/mark-read', {})
       setItems(prev => prev.map(n => ({ ...n, readAt: n.readAt || new Date().toISOString() })))
     } catch {}
   }
@@ -45,7 +45,7 @@ export default function NotificationsBell() {
     setItems(prev => prev.map(x => x._id === n._id ? { ...x, readAt: x.readAt || new Date().toISOString() } : x))
     try {
       const token = await getToken(); const http = api.authedApi(token)
-      await http.post('/api/notifications/mark-read', { ids: [n._id] })
+      await http.post('/notifications/mark-read', { ids: [n._id] })
     } catch {}
     // navigate if target exists
     const d = n.data || {}

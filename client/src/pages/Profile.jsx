@@ -21,7 +21,7 @@ export default function Profile() {
     const run = async () => {
       const token = await getToken();
       const http = api.authedApi(token);
-      const { data } = await http.get("/api/users/me");
+      const { data } = await http.get("/users/me");
       setMe(data.user);
       setLoading(false);
       if (data.user && !data.user.onboarded) navigate("/onboarding");
@@ -69,7 +69,7 @@ export default function Profile() {
         bio: form.bio.trim(),
       };
 
-      const { data } = await http.patch("/api/users/me", payload);
+      const { data } = await http.patch("/users/me", payload);
       setMe(data.user);
       setSuccess("Profile updated");
       setEditing(false);

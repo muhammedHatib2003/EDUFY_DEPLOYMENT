@@ -44,7 +44,7 @@ export default function CourseDetails() {
       if (token) {
         try {
           const http = api.authedApi(token)
-          const { data: meData } = await http.get('/api/users/me')
+          const { data: meData } = await http.get('/users/me')
           setMe(meData.user)
         } catch {
           setMe(null)

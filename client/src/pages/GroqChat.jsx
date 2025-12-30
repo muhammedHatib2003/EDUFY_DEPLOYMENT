@@ -53,7 +53,7 @@ export default function GroqChat() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post('/api/ai/chat', { input: text, history, files: userMsg.files })
+      const { data } = await http.post('/ai/chat', { input: text, history, files: userMsg.files })
       const reply = typeof data?.reply === 'string' ? data.reply : ''
       setMessages((m) => [...m, { role: 'assistant', content: reply }])
     } catch (err) {

@@ -51,8 +51,8 @@ export default function PublicProfile() {
         const http = api.authedApi(token)
         const handleParam = encodeURIComponent(safeHandle)
         const [profileRes, postsRes] = await Promise.all([
-          http.get(`/api/public/users/profiles/${handleParam}`),
-          http.get(`/api/public/feed/profiles/${handleParam}/posts`),
+          http.get(`/public/users/profiles/${handleParam}`),
+          http.get(`/public/feed/profiles/${handleParam}/posts`),
         ])
         setProfile(profileRes.data.profile)
         setPosts(Array.isArray(postsRes.data.posts) ? postsRes.data.posts : [])

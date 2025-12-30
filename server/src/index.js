@@ -25,15 +25,32 @@ const MONGODB_URI = process.env.MONGODB_URI
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
 
 // Middleware
+// Allowed origins (production + local)
+const allowedOrigins = [
+  'https://edufy-deployment.vercel.app',
+  'http://localhost:5173',
+]
+
+// CORS middleware (Clerk-safe)
 app.use(
   cors({
-    origin: CORS_ORIGIN,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (Clerk, server-to-server, mobile)
+      if (!origin) return callback(null, true)
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true)
+      }
+
+      return callback(new Error('Not allowed by CORS'))
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 )
 
+// Handle preflight requests
 app.options('*', cors())
 
 

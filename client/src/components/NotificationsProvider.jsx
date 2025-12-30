@@ -64,7 +64,7 @@ export default function NotificationsProvider({ children }) {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.get('/api/notifications', { params: { limit: 20 } })
+      const { data } = await http.get('/notifications', { params: { limit: 20 } })
       const list = Array.isArray(data.notifications) ? data.notifications : []
       if (seenIds.current.size === 0 && list.length) {
         for (const n of list) seenIds.current.add(n._id)

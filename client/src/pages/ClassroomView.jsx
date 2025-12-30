@@ -53,19 +53,19 @@ export default function ClassroomView() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const meRes = await http.get('/api/users/me')
+      const meRes = await http.get('/users/me')
       setMe(meRes.data.user)
-      const { data } = await http.get(`/api/classrooms/${id}`)
+      const { data } = await http.get(`/classrooms/${id}`)
       setCls(data)
-      const postsRes = await http.get(`/api/classrooms/${id}/posts`)
+      const postsRes = await http.get(`/classrooms/${id}/posts`)
       setPosts(postsRes.data.posts || [])
-      const aRes = await http.get(`/api/classrooms/${id}/assignments`)
+      const aRes = await http.get(`/classrooms/${id}/assignments`)
       setAssignments(aRes.data.assignments || [])
-      const qRes = await http.get(`/api/classrooms/${id}/quizzes`)
+      const qRes = await http.get(`/classrooms/${id}/quizzes`)
       setQuizzes(qRes.data.quizzes || [])
       
       // Initialize chat
-      const { data: tok } = await http.post('/api/stream/token/chat')
+      const { data: tok } = await http.post('/stream/token/chat')
       const chat = StreamChat.getInstance(tok.apiKey)
       if (chat.userID && chat.userID !== tok.userId) { 
         try { await chat.disconnectUser() } catch {} 
@@ -179,13 +179,13 @@ export default function ClassroomView() {
         attachments = encoded
       }
       
-      await http.post(`/api/classrooms/${id}/posts`, { 
+      await http.post(`/classrooms/${id}/posts`, { 
         text: postText, 
         attachments 
       })
       setPostText('')
       setPostMedia([])
-      const res = await http.get(`/api/classrooms/${id}/posts`)
+      const res = await http.get(`/classrooms/${id}/posts`)
       setPosts(res.data.posts || [])
     } catch (e) { 
       setError(e?.response?.data?.error || 'Failed to post') 
@@ -201,7 +201,7 @@ export default function ClassroomView() {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const res = await http.get(`/api/classrooms/${id}/posts/${postId}/comments`)
+        const res = await http.get(`/classrooms/${id}/posts/${postId}/comments`)
         setCommentsByPost(prev => ({ ...prev, [postId]: res.data.comments || [] }))
       } catch (e) { 
         setError(e?.response?.data?.error || 'Failed to load comments') 
@@ -213,7 +213,7 @@ export default function ClassroomView() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const res = await http.post(`/api/classrooms/${id}/posts/${postId}/like`)
+      const res = await http.post(`/classrooms/${id}/posts/${postId}/like`)
       setPosts(prev => prev.map(p => 
         p._id === postId ? { 
           ...p, 
@@ -232,9 +232,9 @@ export default function ClassroomView() {
       if (!text) return
       const token = await getToken()
       const http = api.authedApi(token)
-      await http.post(`/api/classrooms/${id}/posts/${postId}/comments`, { text })
+      await http.post(`/classrooms/${id}/posts/${postId}/comments`, { text })
       setCommentTextByPost(prev => ({ ...prev, [postId]: '' }))
-      const res = await http.get(`/api/classrooms/${id}/posts/${postId}/comments`)
+      const res = await http.get(`/classrooms/${id}/posts/${postId}/comments`)
       setCommentsByPost(prev => ({ ...prev, [postId]: res.data.comments || [] }))
       setPosts(prev => prev.map(p => 
         p._id === postId ? { 
@@ -268,10 +268,10 @@ export default function ClassroomView() {
         dueDate: newA.dueDate || undefined,
         files: uploadedFiles.filter(Boolean),
       }
-      await http.post(`/api/classrooms/${id}/assignments`, body)
+      await http.post(`/classrooms/${id}/assignments`, body)
       setNewA({ open: false, title: '', description: '', dueDate: '' })
       setAssignmentFiles([])
-      const res = await http.get(`/api/classrooms/${id}/assignments`)
+      const res = await http.get(`/classrooms/${id}/assignments`)
       setAssignments(res.data.assignments || [])
     } catch (e) { 
       setError(e?.response?.data?.error || 'Failed to create assignment') 
@@ -297,8 +297,8 @@ export default function ClassroomView() {
       
       const token = await getToken()
       const http = api.authedApi(token)
-      await http.post(`/api/classrooms/${id}/assignments/${assignmentId}/submit`, { fileURL })
-      const res = await http.get(`/api/classrooms/${id}/assignments`)
+      await http.post(`/classrooms/${id}/assignments/${assignmentId}/submit`, { fileURL })
+      const res = await http.get(`/classrooms/${id}/assignments`)
       setAssignments(res.data.assignments || [])
     } catch (e) { 
       setError(e?.response?.data?.error || e?.message || 'Submit failed') 
@@ -325,9 +325,9 @@ export default function ClassroomView() {
       const token = await getToken()
       const http = api.authedApi(token)
       const body = { title: newQz.title, description: newQz.description, questions: newQz.questions }
-      await http.post(`/api/classrooms/${id}/quizzes`, body)
+      await http.post(`/classrooms/${id}/quizzes`, body)
       setNewQz({ open: false, title: '', description: '', questions: [] })
-      const qRes = await http.get(`/api/classrooms/${id}/quizzes`)
+      const qRes = await http.get(`/classrooms/${id}/quizzes`)
       setQuizzes(qRes.data.quizzes || [])
     } catch (e) {
       setError(e?.response?.data?.error || 'Failed to create quiz')
@@ -337,7 +337,7 @@ export default function ClassroomView() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.get(`/api/classrooms/${id}/quizzes/${quizId}`)
+      const { data } = await http.get(`/classrooms/${id}/quizzes/${quizId}`)
       const quiz = data.quiz
       setTake({ open: true, quiz, answers: new Array((quiz?.questions||[]).length).fill(null), result: null })
     } catch (e) { setError(e?.response?.data?.error || 'Failed to load quiz') }
@@ -346,9 +346,9 @@ export default function ClassroomView() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/classrooms/${id}/quizzes/${take.quiz._id}/submit`, { answers: take.answers })
+      const { data } = await http.post(`/classrooms/${id}/quizzes/${take.quiz._id}/submit`, { answers: take.answers })
       setTake((s)=> ({ ...s, result: data }))
-      const qRes = await http.get(`/api/classrooms/${id}/quizzes`)
+      const qRes = await http.get(`/classrooms/${id}/quizzes`)
       setQuizzes(qRes.data.quizzes || [])
     } catch (e) { setError(e?.response?.data?.error || 'Submit failed') }
   }
@@ -1092,11 +1092,11 @@ export default function ClassroomView() {
                                             const feedback = document.getElementById(`feedback-${submission._id}`).value
                                             const token = await getToken()
                                             const http = api.authedApi(token)
-                                            await http.post(`/api/classrooms/${id}/submissions/${submission._id}/grade`, { 
+                                            await http.post(`/classrooms/${id}/submissions/${submission._id}/grade`, { 
                                               grade, 
                                               feedback 
                                             })
-                                            const res = await http.get(`/api/classrooms/${id}/assignments`)
+                                            const res = await http.get(`/classrooms/${id}/assignments`)
                                             setAssignments(res.data.assignments || [])
                                           }}
                                         >

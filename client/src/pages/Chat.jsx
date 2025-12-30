@@ -42,7 +42,7 @@ function CreateChatModal({ open, onClose, client, friends }) {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.post('/api/stream/users/upsert', { identifiers: chosen })
+        const { data } = await http.post('/stream/users/upsert', { identifiers: chosen })
         friendIds = Array.isArray(data?.users) ? data.users.map(u => u.userId).filter(Boolean) : []
       } catch (_) {}
 
@@ -206,15 +206,15 @@ export default function Chat() {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const me = await http.get('/api/users/me')
+        const me = await http.get('/users/me')
         if (!me.data.user.onboarded) return navigate('/onboarding')
 
-        const { data } = await http.post('/api/stream/token/chat')
+        const { data } = await http.post('/stream/token/chat')
         const chat = StreamChat.getInstance(data.apiKey)
         if (chat.userID && chat.userID !== data.userId) { try { await chat.disconnectUser() } catch {} }
         if (!chat.userID || chat.userID !== data.userId) { await chat.connectUser({ id: data.userId }, data.token) }
 
-        const fr = await http.get('/api/friends/list')
+        const fr = await http.get('/friends/list')
         if (mounted) { setClient(chat); setFriends(fr.data.friends || []) }
       } catch (e) {
         const msg = e?.response?.data?.error || e?.message || 'Failed to connect to chat'

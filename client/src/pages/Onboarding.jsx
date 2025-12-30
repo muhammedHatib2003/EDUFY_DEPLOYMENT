@@ -35,7 +35,7 @@ export default function Onboarding() {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.get('/api/users/me')
+        const { data } = await http.get('/users/me')
         if (data?.user?.onboarded) navigate('/')
       } catch (e) {
         // ignore; likely not onboarded yet or unauthorized
@@ -71,7 +71,7 @@ export default function Onboarding() {
         handle: form.handle.trim(),
       }
       if (form.bio) payload.bio = form.bio.trim()
-      await http.post('/api/users/onboard', payload)
+      await http.post('/users/onboard', payload)
       navigate('/')
     } catch (err) {
       setError(err?.response?.data?.error || 'Failed to save onboarding')

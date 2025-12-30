@@ -151,7 +151,7 @@ export default function Feed() {
         if (!opts?.silent) setRefreshing(true)
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.get('/api/feed', { params: { limit: 25 } })
+        const { data } = await http.get('/feed', { params: { limit: 25 } })
         setPosts(Array.isArray(data.posts) ? data.posts : [])
       } catch (err) {
         console.error('Failed to load feed', err)
@@ -169,7 +169,7 @@ export default function Feed() {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.get(`/api/feed/${postId}`)
+        const { data } = await http.get(`/feed/${postId}`)
         return data.post
       } catch (err) {
         console.error('Failed to fetch post', err)
@@ -186,7 +186,7 @@ export default function Feed() {
         if (!opts?.silent) setQuestionsRefreshing(true)
         const token = await getToken().catch(() => null)
         const http = api.authedApi(token || undefined)
-        const { data } = await http.get('/api/questions', { params: { limit: 50 } })
+        const { data } = await http.get('/questions', { params: { limit: 50 } })
         setQuestions(Array.isArray(data?.questions) ? data.questions : [])
       } catch (err) {
         console.error('Failed to load questions', err)
@@ -205,7 +205,7 @@ export default function Feed() {
         setLoadingComments((prev) => new Set(prev).add(postId))
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.get(`/api/feed/${postId}/comments`, { params: { limit: 50 } })
+        const { data } = await http.get(`/feed/${postId}/comments`, { params: { limit: 50 } })
         const comments = Array.isArray(data.comments) ? data.comments : []
         setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, comments } : p)))
       } catch (err) {
@@ -227,7 +227,7 @@ export default function Feed() {
     if (!token) return
     const controller = new AbortController()
     streamController.current = controller
-    await fetchEventSource(`${apiBase}/api/feed/stream`, {
+    await fetchEventSource(`${apiBase}/feed/stream`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -364,7 +364,7 @@ export default function Feed() {
         data: att.data,
         mimeType: att.mimeType,
       }))
-      const { data } = await http.post('/api/feed', {
+      const { data } = await http.post('/feed', {
         text: composer.text,
         media,
       })
@@ -384,7 +384,7 @@ export default function Feed() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/feed/${postId}/like`)
+      const { data } = await http.post(`/feed/${postId}/like`)
       if (!data?.post) return
       setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)))
     } catch (err) {
@@ -398,7 +398,7 @@ export default function Feed() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      await http.delete(`/api/feed/${postId}`)
+      await http.delete(`/feed/${postId}`)
       setPosts((prev) => prev.filter((p) => p.id !== postId))
     } catch (err) {
       console.error('Failed to delete post', err)
@@ -431,7 +431,7 @@ export default function Feed() {
       setCommentingIds((prev) => new Set(prev).add(postId))
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/feed/${postId}/comments`, { text })
+      const { data } = await http.post(`/feed/${postId}/comments`, { text })
       if (data?.post) {
         setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)))
       }
@@ -455,7 +455,7 @@ export default function Feed() {
       setReplyingIds((prev) => new Set(prev).add(commentId))
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/feed/${postId}/comments`, { text, parentId: commentId })
+      const { data } = await http.post(`/feed/${postId}/comments`, { text, parentId: commentId })
       if (data?.post) {
         setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)))
       }
@@ -478,7 +478,7 @@ export default function Feed() {
       setCommentVotingIds((prev) => new Set(prev).add(commentId))
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/feed/${postId}/comments/${commentId}/vote`)
+      const { data } = await http.post(`/feed/${postId}/comments/${commentId}/vote`)
       if (data?.comment) {
         const updated = data.comment
         const applyUpdate = (list = []) =>
@@ -535,7 +535,7 @@ export default function Feed() {
       setQuestionError('')
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post('/api/questions', {
+      const { data } = await http.post('/questions', {
         title,
         details,
         tags,
@@ -560,7 +560,7 @@ export default function Feed() {
       setVotingQuestionIds((prev) => new Set(prev).add(questionId))
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/questions/${questionId}/vote`, { delta })
+      const { data } = await http.post(`/questions/${questionId}/vote`, { delta })
       if (data?.question) {
         setQuestions((prev) => prev.map((question) => (question.id === questionId ? data.question : question)))
         setQuestionVotes((prev) => {
@@ -597,7 +597,7 @@ export default function Feed() {
       setQuestionError('')
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/questions/${questionId}/answers`, { body: text })
+      const { data } = await http.post(`/questions/${questionId}/answers`, { body: text })
       if (data?.question) {
         setQuestions((prev) => prev.map((question) => (question.id === questionId ? data.question : question)))
         setAnswerDrafts((prev) => ({ ...prev, [questionId]: '' }))
@@ -623,7 +623,7 @@ export default function Feed() {
       setQuestionError('')
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/questions/${questionId}/answers/${answerId}/replies`, { body: text })
+      const { data } = await http.post(`/questions/${questionId}/answers/${answerId}/replies`, { body: text })
       if (data?.question) {
         setQuestions((prev) => prev.map((question) => (question.id === questionId ? data.question : question)))
         setReplyDrafts((prev) => ({ ...prev, [key]: '' }))
@@ -647,7 +647,7 @@ export default function Feed() {
       setQuestionError('')
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post(`/api/questions/${questionId}/answers/${answerId}/vote`)
+      const { data } = await http.post(`/questions/${questionId}/answers/${answerId}/vote`)
       if (data?.question) {
         setQuestions((prev) => prev.map((q) => (q.id === questionId ? data.question : q)))
       }

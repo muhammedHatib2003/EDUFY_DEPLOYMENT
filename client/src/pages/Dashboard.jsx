@@ -57,9 +57,9 @@ export default function Dashboard() {
       const token = await getToken()
       const http = api.authedApi(token)
       const [meRes, classRes, scheduleRes] = await Promise.all([
-        http.get('/api/users/me'),
-        http.get('/api/classrooms'),
-        http.get('/api/schedule'),
+        http.get('/users/me'),
+        http.get('/classrooms'),
+        http.get('/schedule'),
       ])
       setMe(meRes.data.user)
       setClasses(classRes.data.classrooms || [])
@@ -81,7 +81,7 @@ export default function Dashboard() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.get('/api/schedule')
+      const { data } = await http.get('/schedule')
       setItems(Array.isArray(data.items) ? data.items : [])
     } catch (e) {
       setError(e?.response?.data?.error || 'Failed to refresh schedule')
@@ -99,7 +99,7 @@ export default function Dashboard() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      await http.post('/api/schedule', {
+      await http.post('/schedule', {
         classId: form.classId,
         title: form.title.trim(),
         type: form.type,

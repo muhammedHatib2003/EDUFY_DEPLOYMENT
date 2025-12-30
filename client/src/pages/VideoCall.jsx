@@ -72,7 +72,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.post('/api/stream/token/video')
+        const { data } = await http.post('/stream/token/video')
 
         const c = new VideoSDK.StreamVideoClient({
           apiKey: data.apiKey,

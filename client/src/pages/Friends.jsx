@@ -19,14 +19,14 @@ export default function Friends() {
       setLoading(true)
       const token = await getToken()
       const http = api.authedApi(token)
-      const me = await http.get('/api/users/me')
+      const me = await http.get('/users/me')
       if (!me.data.user.onboarded) {
         navigate('/onboarding')
         return
       }
       const [friendsRes, pendingRes] = await Promise.all([
-        http.get('/api/friends/list'),
-        http.get('/api/friends/pending'),
+        http.get('/friends/list'),
+        http.get('/friends/pending'),
       ])
       setFriends(friendsRes.data.friends || [])
       setIncoming(pendingRes.data.incoming || [])
@@ -48,7 +48,7 @@ export default function Friends() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      await http.post('/api/friends/request', { handle })
+      await http.post('/friends/request', { handle })
       setHandle('')
       await load()
     } catch (err) {
@@ -59,7 +59,7 @@ export default function Friends() {
   const respond = async (requestId, action) => {
     const token = await getToken()
     const http = api.authedApi(token)
-    await http.post('/api/friends/respond', { requestId, action })
+    await http.post('/friends/respond', { requestId, action })
     await load()
   }
 

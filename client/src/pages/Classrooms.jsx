@@ -20,9 +20,9 @@ export default function Classrooms() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const meRes = await http.get('/api/users/me')
+      const meRes = await http.get('/users/me')
       setMe(meRes.data.user)
-      const { data } = await http.get('/api/classrooms')
+      const { data } = await http.get('/classrooms')
       setClasses(data.classrooms || [])
     } catch (e) { 
       setError(e?.response?.data?.error || e?.message) 
@@ -43,7 +43,7 @@ export default function Classrooms() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post('/api/classrooms', { 
+      const { data } = await http.post('/classrooms', { 
         name: form.name.trim(), 
         description: form.description.trim() 
       })
@@ -65,7 +65,7 @@ export default function Classrooms() {
     try {
       const token = await getToken()
       const http = api.authedApi(token)
-      const { data } = await http.post('/api/classrooms/join', { code: form.code.trim() })
+      const { data } = await http.post('/classrooms/join', { code: form.code.trim() })
       navigate(`/classrooms/${data.classroom._id}`)
     } catch (e) { 
       setError(e?.response?.data?.error || 'Failed to join classroom') 

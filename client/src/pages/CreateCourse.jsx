@@ -23,7 +23,7 @@ export default function CreateCourse() {
       try {
         const token = await getToken()
         const http = api.authedApi(token)
-        const { data } = await http.get('/api/users/me')
+        const { data } = await http.get('/users/me')
         setMe(data.user)
       } catch {
         setMe(null)
