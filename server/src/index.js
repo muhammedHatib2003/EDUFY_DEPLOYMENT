@@ -34,6 +34,9 @@ app.use(
   })
 )
 
+app.options('*', cors())
+
+
 app.use(express.json({ limit: '20mb' }))
 app.use(morgan('dev'))
 // Attach Clerk middleware (supporting multiple versions)
