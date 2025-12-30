@@ -25,7 +25,15 @@ const MONGODB_URI = process.env.MONGODB_URI
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
 
 // Middleware
-app.use(cors({ origin: CORS_ORIGIN, credentials: true }))
+app.use(
+  cors({
+    origin: CORS_ORIGIN,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+)
+
 app.use(express.json({ limit: '20mb' }))
 app.use(morgan('dev'))
 // Attach Clerk middleware (supporting multiple versions)
