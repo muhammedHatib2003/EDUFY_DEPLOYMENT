@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { SignedIn, SignedOut, SignIn, SignUp, RedirectToSignIn, useAuth } from '@clerk/clerk-react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar.jsx'
@@ -19,10 +20,50 @@ import LessonViewer from './pages/LessonViewer.jsx'
 import Summaries from './pages/Summaries.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Todos from './pages/Todos.jsx'
+import CallToastListener from './components/CallToastListener.jsx'
+import api from './lib/api'
 
 function AuthedLayout() {
+  const { getToken } = useAuth()
+  const navigate = useNavigate()
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const verifyOnboarded = async () => {
+      try {
+        const token = await getToken()
+        const http = api.authedApi(token)
+        const { data } = await http.get('/users/me')
+        if (!data?.user?.onboarded) {
+          navigate('/onboarding', { replace: true })
+          return
+        }
+      } catch (err) {
+        // If we can't verify, push to onboarding to be safe
+        navigate('/onboarding', { replace: true })
+        return
+      } finally {
+        if (!cancelled) setChecking(false)
+      }
+    }
+    verifyOnboarded()
+    return () => {
+      cancelled = true
+    }
+  }, [getToken, navigate])
+
+  if (checking) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-base-100">
+        <div className="loading loading-lg text-primary" />
+      </div>
+    )
+  }
+
   return (
     <NotificationsProvider>
+      <CallToastListener />
       <div className="h-full drawer">
         <input id="app-drawer" type="checkbox" className="drawer-toggle" />
         <div className="drawer-content flex flex-col">

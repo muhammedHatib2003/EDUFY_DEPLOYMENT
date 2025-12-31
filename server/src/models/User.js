@@ -10,6 +10,7 @@ const UserSchema = new mongoose.Schema(
     handle: { type: String, unique: true, sparse: true }, // like @john123
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     onboarded: { type: Boolean, default: false },
+    avatarUrl: { type: String },
     streamUserId: { type: String },
     bio: { type: String },
   },

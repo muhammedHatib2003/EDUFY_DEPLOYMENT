@@ -1,5 +1,6 @@
 import express from 'express'
 import { z } from 'zod'
+import { clerkClient } from '@clerk/express'
 import User from '../models/User.js'
 import FriendRequest from '../models/FriendRequest.js'
 import Notification from '../models/Notification.js'
@@ -7,12 +8,66 @@ import { normalizeHandle } from '../utils/handle.js'
 
 const router = express.Router()
 
+async function fetchClerkAvatars(clerkIds) {
+  const unique = [...new Set(clerkIds.filter(Boolean))]
+  if (!unique.length) return {}
+  try {
+    const result = await clerkClient.users.getUserList({
+      userId: unique,
+      limit: Math.min(unique.length, 100),
+    })
+    const map = {}
+    result?.data?.forEach((u) => {
+      if (u?.imageUrl) map[u.id] = u.imageUrl
+    })
+    return map
+  } catch (err) {
+    console.error('Failed to fetch Clerk avatars', err)
+    return {}
+  }
+}
+
+async function attachAvatars(list) {
+  const data = (list || []).filter(Boolean).map((item) => ({ ...item }))
+  const missingIds = data
+    .filter((u) => u && !u.avatarUrl && u.clerkId)
+    .map((u) => u.clerkId)
+  const clerkAvatars = await fetchClerkAvatars(missingIds)
+
+  // Persist back any new avatars so future responses are fast
+  if (Object.keys(clerkAvatars).length) {
+    try {
+      const ops = data
+        .filter((u) => u && !u.avatarUrl && u.clerkId && clerkAvatars[u.clerkId])
+        .map((u) => ({
+          updateOne: {
+            filter: { _id: u._id },
+            update: { $set: { avatarUrl: clerkAvatars[u.clerkId] } },
+          },
+        }))
+      if (ops.length) {
+        await User.bulkWrite(ops, { ordered: false })
+      }
+    } catch (err) {
+      console.error('Failed to persist fetched avatars', err)
+    }
+  }
+
+  return data.map((u) => ({
+    ...u,
+    avatarUrl: u.avatarUrl || clerkAvatars[u.clerkId] || null,
+  }))
+}
+
 // List friends
 router.get('/list', async (req, res) => {
   try {
-    const me = await User.findOne({ clerkId: req.auth.userId }).populate('friends', 'handle firstName lastName role')
+    const me = await User.findOne({ clerkId: req.auth.userId })
+      .populate('friends', 'handle firstName lastName role avatarUrl clerkId')
+      .lean()
     if (!me) return res.status(404).json({ error: 'User not found' })
-    res.json({ friends: me.friends || [] })
+    const friends = await attachAvatars(me.friends || [])
+    res.json({ friends })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to list friends' })
@@ -72,10 +127,33 @@ router.get('/pending', async (req, res) => {
     const me = await User.findOne({ clerkId: req.auth.userId })
     if (!me) return res.status(404).json({ error: 'User not found' })
     const incoming = await FriendRequest.find({ to: me._id, status: 'pending' })
-      .populate('from', 'handle firstName lastName role')
+      .populate('from', 'handle firstName lastName role avatarUrl clerkId')
+      .lean()
     const outgoing = await FriendRequest.find({ from: me._id, status: 'pending' })
-      .populate('to', 'handle firstName lastName role')
-    res.json({ incoming, outgoing })
+      .populate('to', 'handle firstName lastName role avatarUrl clerkId')
+      .lean()
+
+    const incomingWithAvatars = await (async () => {
+      const incomingUsers = (incoming || []).map((r) => r.from || null)
+      const hydrated = await attachAvatars(incomingUsers)
+      const lookup = new Map(hydrated.map((u) => [String(u._id), u]))
+      return (incoming || []).map((r) => ({
+        ...r,
+        from: r.from ? lookup.get(String(r.from._id)) || r.from : null,
+      }))
+    })()
+
+    const outgoingWithAvatars = await (async () => {
+      const outgoingUsers = (outgoing || []).map((r) => r.to || null)
+      const hydrated = await attachAvatars(outgoingUsers)
+      const lookup = new Map(hydrated.map((u) => [String(u._id), u]))
+      return (outgoing || []).map((r) => ({
+        ...r,
+        to: r.to ? lookup.get(String(r.to._id)) || r.to : null,
+      }))
+    })()
+
+    res.json({ incoming: incomingWithAvatars, outgoing: outgoingWithAvatars })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to get pending' })

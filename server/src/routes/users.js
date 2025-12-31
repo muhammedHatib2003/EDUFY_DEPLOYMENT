@@ -11,6 +11,7 @@ function buildPublicProfile(user) {
   return {
     id: user._id,
     handle: user.handle,
+    avatarUrl: user.avatarUrl,
     firstName: user.firstName,
     lastName: user.lastName,
     role: user.role,
@@ -47,6 +48,7 @@ const OnboardSchema = z.object({
   role: z.enum(['student', 'teacher']),
   handle: z.string().trim().min(2).max(30),
   bio: z.string().trim().max(240).optional(),
+  avatarUrl: z.string().url().max(500).optional(),
 })
 
 router.post('/onboard', async (req, res) => {
@@ -57,7 +59,7 @@ router.post('/onboard', async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid data', details: parsed.error.flatten() })
     }
-    const { firstName, lastName, age, role, handle, bio } = parsed.data
+    const { firstName, lastName, age, role, handle, bio, avatarUrl } = parsed.data
 
     let user = await User.findOne({ clerkId })
     if (!user) user = new User({ clerkId })
@@ -84,6 +86,7 @@ router.post('/onboard', async (req, res) => {
     user.handle = finalHandle
     user.onboarded = true
     if (typeof bio === 'string') user.bio = bio
+    if (typeof avatarUrl === 'string') user.avatarUrl = avatarUrl
     await user.save()
 
     res.json({ user })
@@ -115,6 +118,7 @@ const UpdateSchema = z.object({
   age: z.number().int().min(1).max(120).optional(),
   handle: z.string().trim().min(2).max(30).optional(),
   bio: z.string().trim().max(240).optional(),
+  avatarUrl: z.string().url().max(500).optional(),
   role: z.any().optional(), // explicitly blocked
 })
 
@@ -126,7 +130,7 @@ router.patch('/me', async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid data', details: parsed.error.flatten() })
     }
-    const { firstName, lastName, age, handle, bio, role } = parsed.data
+    const { firstName, lastName, age, handle, bio, avatarUrl, role } = parsed.data
     if (typeof role !== 'undefined') {
       return res.status(400).json({ error: 'Role cannot be changed' })
     }
@@ -137,6 +141,7 @@ router.patch('/me', async (req, res) => {
     if (typeof lastName === 'string') user.lastName = lastName
     if (typeof age === 'number') user.age = age
     if (typeof bio === 'string') user.bio = bio
+    if (typeof avatarUrl === 'string') user.avatarUrl = avatarUrl
 
     if (typeof handle === 'string') {
       const norm = normalizeHandle(handle)

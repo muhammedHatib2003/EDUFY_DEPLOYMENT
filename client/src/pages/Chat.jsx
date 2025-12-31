@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import api from '../lib/api'
 import { StreamChat } from 'stream-chat'
@@ -17,6 +17,19 @@ import {
 import 'stream-chat-react/dist/css/v2/index.css'
 import VideoCall from './VideoCall.jsx'
 import { useNavigate } from 'react-router-dom'
+import { 
+  MessageCircle, 
+  Phone, 
+  Video, 
+  Users, 
+  X, 
+  Check, 
+  PhoneOff,
+  Plus,
+  Menu,
+  Search,
+  ArrowLeft
+} from 'lucide-react'
 
 function CreateChatModal({ open, onClose, client, friends }) {
   const { setActiveChannel } = useChatContext()
@@ -65,54 +78,97 @@ function CreateChatModal({ open, onClose, client, friends }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-base-100 border border-base-300 rounded-2xl shadow-xl w-full max-w-md">
-        <div className="p-6">
-          <h3 className="font-bold text-xl mb-2">Create New Chat</h3>
+      <div className="bg-base-100 border border-base-300 rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="p-6 flex-shrink-0">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-xl">New Conversation</h3>
+            <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle">
+              <X size={20} />
+            </button>
+          </div>
           <p className="text-sm text-base-content/70 mb-4">Select friends to start a conversation</p>
           
-          <div className="max-h-64 overflow-auto border border-base-300 rounded-lg">
-            {friends.length === 0 ? (
-              <div className="p-4 text-center text-sm text-base-content/70">
-                You have no friends yet
-              </div>
-            ) : (
-              <ul className="divide-y divide-base-300">
-                {friends.map((f) => (
-                  <li key={f._id} className="flex items-center gap-3 p-3 hover:bg-base-200 transition-colors">
-                    <input 
-                      type="checkbox" 
-                      className="checkbox checkbox-primary checkbox-sm" 
-                      checked={!!selected[f.handle]} 
-                      onChange={() => toggle(f.handle)} 
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-base-content truncate">{f.handle}</div>
-                      <div className="text-xs text-base-content/70 truncate">
-                        {[f.firstName, f.lastName].filter(Boolean).join(' ') || 'No name'}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-base-content/50" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search friends..." 
+              className="input input-bordered w-full pl-10"
+              onChange={(e) => {
+                const search = e.target.value.toLowerCase()
+                // You can implement search filtering here
+              }}
+            />
           </div>
-          
+        </div>
+        
+        <div className="flex-1 overflow-auto min-h-0 border-t border-base-300">
+          {friends.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-base-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="text-base-content/50" size={24} />
+              </div>
+              <p className="text-base-content/70">No friends found</p>
+              <p className="text-sm text-base-content/50 mt-2">Add friends to start chatting</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-base-300">
+              {friends.map((f) => (
+                <div
+                  key={f._id}
+                  className="flex items-center gap-3 p-4 hover:bg-base-200 transition-colors cursor-pointer active:scale-[0.98]"
+                  onClick={() => toggle(f.handle)}
+                >
+                  <div className="avatar">
+                    {f.avatarUrl ? (
+                      <div className="w-12 h-12 rounded-full ring ring-primary/30 overflow-hidden">
+                        <img src={f.avatarUrl} alt={f.handle || 'User'} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold">
+                        {(f.handle || 'U').replace(/^@/, '').charAt(0).toUpperCase() || 'U'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-base-content truncate">{f.handle}</div>
+                    <div className="text-sm text-base-content/70 truncate">
+                      {[f.firstName, f.lastName].filter(Boolean).join(' ') || 'No name'}
+                    </div>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    className="checkbox checkbox-primary checkbox-lg" 
+                    checked={!!selected[f.handle]} 
+                    onChange={() => toggle(f.handle)} 
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="p-6 border-t border-base-300 flex-shrink-0">
           {error && (
-            <div className="alert alert-error mt-4 p-3 text-sm">
-              {error}
+            <div className="alert alert-error mb-4">
+              <span>{error}</span>
             </div>
           )}
           
-          <div className="flex justify-end gap-3 mt-6">
-            <button className="btn btn-ghost btn-sm" onClick={onClose}>
+          <div className="flex gap-3">
+            <button 
+              className="btn btn-ghost flex-1" 
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button 
-              className={`btn btn-primary btn-sm ${submitting ? 'loading' : ''}`} 
+              className={`btn btn-primary flex-1 gap-2 ${submitting ? 'loading' : ''}`} 
               onClick={onCreate} 
-              disabled={submitting}
+              disabled={submitting || Object.keys(selected).filter(k => selected[k]).length === 0}
             >
-              {submitting ? 'Creating...' : 'Create Chat'}
+              {!submitting && <MessageCircle size={18} />}
+              {submitting ? 'Creating...' : 'Start Chat'}
             </button>
           </div>
         </div>
@@ -123,29 +179,33 @@ function CreateChatModal({ open, onClose, client, friends }) {
 
 function ChannelCallBar({ onStartVideo, onStartVoice }) {
   const { channel } = useChannelStateContext()
+  const { client } = useChatContext()
+  const members = Object.values(channel?.state?.members || {}).filter(m => m.user?.id !== client.userID)
+  
   return (
-    <div className="bg-base-100/80 backdrop-blur border-b border-base-300 px-4 py-3 flex items-center justify-between">
+    <div className="bg-base-100 border-b border-base-300 px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between">
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-base-content">Ready to call</div>
+        <div className="text-sm font-semibold text-base-content truncate">
+          {members.length === 1 ? members[0]?.user?.name || members[0]?.user?.id : `${members.length} participants`}
+        </div>
+        <div className="text-xs text-base-content/70">Tap to start a call</div>
       </div>
-      <div className="flex gap-2">
-        <button 
-          className="btn btn-outline btn-sm gap-2"
+      <div className="flex items-center gap-2">
+        <button
+          className="btn btn-outline btn-xs sm:btn-sm rounded-full"
           onClick={() => onStartVoice(channel)}
+          aria-label="Voice call"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-          </svg>
-          Voice
+          <Phone size={16} />
+          <span className="hidden sm:inline">Voice</span>
         </button>
-        <button 
-          className="btn btn-primary btn-sm gap-2"
+        <button
+          className="btn btn-primary btn-xs sm:btn-sm rounded-full"
           onClick={() => onStartVideo(channel)}
+          aria-label="Video call"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          Video
+          <Video size={16} />
+          <span className="hidden sm:inline">Video</span>
         </button>
       </div>
     </div>
@@ -179,6 +239,52 @@ function CallInviteHandler({ onIncoming, onResponse, onCancel, onAccepted, onEnd
   return null
 }
 
+function MobileSidebar({ show, onClose, client, friends, onCreateChat }) {
+  const friendIds = (friends || []).map(f => f.handle).filter(Boolean)
+  const filters = friendIds.length > 0
+    ? { type: 'messaging', $and: [ { members: { $in: [client.userID] } }, { members: { $in: friendIds } } ] }
+    : { type: 'messaging', members: { $in: [client.userID] } }
+  const sort = { last_message_at: -1 }
+  const options = { presence: true, state: true }
+
+  return (
+    <div className={`fixed inset-0 z-40 transform transition-transform duration-300 ease-in-out ${
+      show ? 'translate-x-0' : '-translate-x-full'
+    }`}>
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-80 max-w-[85vw] h-full bg-base-100 flex flex-col">
+        <div className="p-4 border-b border-base-300 flex items-center gap-3">
+          <button onClick={onClose} className="btn btn-ghost btn-circle">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-xl font-bold text-base-content">Messages</h2>
+        </div>
+        
+        <div className="flex-1 overflow-hidden">
+          <ChannelList 
+            filters={filters} 
+            sort={sort} 
+            options={options}
+          />
+        </div>
+        
+        <div className="p-4 border-t border-base-300">
+          <button 
+            className="btn btn-primary w-full gap-2"
+            onClick={() => {
+              onClose()
+              onCreateChat()
+            }}
+          >
+            <Plus size={20} />
+            New Chat
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Chat() {
   const { getToken } = useAuth()
   const navigate = useNavigate()
@@ -193,6 +299,16 @@ export default function Chat() {
   const [callAccepted, setCallAccepted] = useState({ callId: null, by: null })
   const [currentCallChannel, setCurrentCallChannel] = useState(null)
   const [callRole, setCallRole] = useState(null)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const windowRef = useRef(null)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const getChatTheme = () => {
     const t = document.documentElement.getAttribute('data-theme') || localStorage.getItem('theme') || 'light'
@@ -231,10 +347,53 @@ export default function Chat() {
     return () => window.removeEventListener('app:themechange', handler)
   }, [])
 
+  // Listen for call invites on any channel so missed chats still surface the request
+  useEffect(() => {
+    if (!client) return
+
+    const getOrWatchChannel = async (event) => {
+      const cid = event?.cid
+      if (!cid) return null
+      if (event?.channel) return event.channel
+      const existing = client.activeChannels?.[cid]
+      if (existing) return existing
+      const [type, id] = cid.split(':')
+      const ch = client.channel(type, id)
+      try { await ch.watch() } catch {}
+      return ch
+    }
+
+    const handleMsgEvent = async (event) => {
+      try {
+        const msg = event?.message
+        if (!msg) return
+
+        if (msg.callInvite) {
+          if (msg.user?.id === client.userID) return
+          const channel = await getOrWatchChannel(event)
+          setIncomingReq((prev) => {
+            if (prev?.callId === msg.callInvite.callId && prev.from === msg.user?.id) return prev
+            return { ...msg.callInvite, from: msg.user?.id, channel }
+          })
+        } else if (msg.callCancel) {
+          setIncomingReq((prev) => (prev?.callId === msg.callCancel.callId ? null : prev))
+        }
+      } catch {}
+    }
+
+    client.on('message.new', handleMsgEvent)
+    client.on('notification.message_new', handleMsgEvent)
+
+    return () => {
+      try { client.off('message.new', handleMsgEvent) } catch {}
+      try { client.off('notification.message_new', handleMsgEvent) } catch {}
+    }
+  }, [client])
+
   if (loading) return (
     <div className="w-screen h-screen flex items-center justify-center bg-base-100">
-      <div className="text-center">
-        <div className="loading loading-spinner loading-lg text-primary mb-4"></div>
+      <div className="text-center space-y-4">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
         <div className="text-base-content/70">Loading chat...</div>
       </div>
     </div>
@@ -242,26 +401,33 @@ export default function Chat() {
   
   if (!client) return (
     <div className="w-screen h-screen flex items-center justify-center bg-base-100 p-4">
-      <div className="max-w-md w-full">
-        <div className="alert alert-error mb-4">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>Unable to connect to chat</span>
-        </div>
-        {error && (
-          <div className="bg-base-200 rounded-lg p-4 mb-4">
-            <div className="text-sm font-medium text-base-content mb-2">Error details:</div>
-            <div className="text-sm text-base-content/70 font-mono">{String(error)}</div>
+      <div className="card bg-base-100 shadow-xl max-w-md w-full">
+        <div className="card-body">
+          <div className="alert alert-error mb-4">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Unable to connect to chat</span>
           </div>
-        )}
-        <div className="bg-base-200 rounded-lg p-4">
-          <div className="text-sm font-medium text-base-content mb-2">Troubleshooting steps:</div>
-          <ul className="text-sm text-base-content/70 space-y-1">
-            <li>• Check server environment variables</li>
-            <li>• Verify server is running</li>
-            <li>• Ensure you're signed in</li>
-          </ul>
+          {error && (
+            <div className="bg-base-200 rounded-lg p-4 mb-4">
+              <div className="text-sm font-medium text-base-content mb-2">Error details:</div>
+              <div className="text-sm text-base-content/70 font-mono break-all">{String(error)}</div>
+            </div>
+          )}
+          <div className="bg-base-200 rounded-lg p-4">
+            <div className="text-sm font-medium text-base-content mb-2">Troubleshooting steps:</div>
+            <ul className="text-sm text-base-content/70 space-y-1">
+              <li>• Check server environment variables</li>
+              <li>• Verify server is running</li>
+              <li>• Ensure you're signed in</li>
+            </ul>
+          </div>
+          <div className="card-actions justify-end mt-4">
+            <button className="btn btn-primary" onClick={() => window.location.reload()}>
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -275,71 +441,99 @@ export default function Chat() {
   const options = { presence: true, state: true }
 
   return (
-    <div className="w-screen h-screen bg-base-100 flex">
+    <div className="w-screen h-screen bg-base-100 overflow-hidden" ref={windowRef}>
       <StreamChatUI client={client} theme={chatTheme}>
-        <div className="w-full h-full flex">
-          {/* Sidebar */}
-          <div className="w-80 min-w-80 border-r border-base-300 bg-base-100 flex flex-col">
-            <div className="p-4 border-b border-base-300">
-              <h2 className="text-xl font-bold text-base-content">Messages</h2>
+        <div className="h-full flex flex-col md:flex-row overflow-hidden">
+          {/* Mobile Sidebar */}
+          <MobileSidebar 
+            show={mobileSidebarOpen}
+            onClose={() => setMobileSidebarOpen(false)}
+            client={client}
+            friends={friends}
+            onCreateChat={() => setCreateOpen(true)}
+          />
+
+          {/* Desktop Sidebar (hidden on mobile) */}
+          {!isMobile && (
+            <div className="w-80 min-w-80 border-r border-base-300 bg-base-100 flex flex-col hidden md:flex">
+              <div className="p-6 border-b border-base-300">
+                <h2 className="text-xl font-bold text-base-content">Messages</h2>
+              </div>
+              
+              <div className="flex-1 overflow-hidden">
+                <ChannelList 
+                  filters={filters} 
+                  sort={sort} 
+                  options={options}
+                />
+              </div>
+              
+              <div className="p-4 border-t border-base-300">
+                <button 
+                  className="btn btn-primary w-full gap-2"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  <Plus size={20} />
+                  New Chat
+                </button>
+              </div>
             </div>
-            
-            <div className="flex-1 overflow-hidden">
-              <ChannelList 
-                filters={filters} 
-                sort={sort} 
-                options={options}
-              />
-            </div>
-            
-            <div className="p-4 border-t border-base-300">
-              <button 
-                className="btn btn-primary w-full gap-2"
-                onClick={() => setCreateOpen(true)}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New Chat
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* Main Chat Area */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <Channel>
-              <Window>
-                <ChannelCallBar
-                  onStartVideo={async (ch) => {
-                    try {
-                      const id = ch?.id || (ch?.cid ? ch.cid.replace(':', '-') : 'graedufy-call')
-                      const invite = { callId: id, mode: 'video', type: 'initial', from: client.userID, inviter: client.userID, ts: Date.now() }
-                      await ch.sendMessage({ text: 'Call invite', callInvite: invite })
-                      setOutgoingReq({ ...invite, channel: ch })
-                      setCallAccepted({ callId: null, by: null })
-                    } catch {}
-                  }}
-                  onStartVoice={async (ch) => {
-                    try {
-                      const id = ch?.id || (ch?.cid ? ch.cid.replace(':', '-') : 'graedufy-call')
-                      const invite = { callId: id, mode: 'voice', type: 'initial', from: client.userID, inviter: client.userID, ts: Date.now() }
-                      await ch.sendMessage({ text: 'Call invite', callInvite: invite })
-                      setOutgoingReq({ ...invite, channel: ch })
-                      setCallAccepted({ callId: null, by: null })
-                    } catch {}
-                  }}
-                />
-                <ChannelHeader />
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-hidden">
-                    <MessageList />
-                  </div>
-                  <div className="border-t border-base-300 bg-base-100">
-                    <MessageInput focus />
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+            {/* Mobile Header */}
+            {isMobile && (
+              <div className="bg-base-100 border-b border-base-300 px-4 py-3 flex items-center gap-3 md:hidden">
+                <button 
+                  className="btn btn-ghost btn-circle"
+                  onClick={() => setMobileSidebarOpen(true)}
+                >
+                  <Menu size={20} />
+                </button>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-base-content truncate">
+                    {windowRef.current?.querySelector('.str-chat__header-livestream-title')?.textContent || 'Messages'}
                   </div>
                 </div>
-              </Window>
-              <Thread />
+              </div>
+            )}
+
+            <Channel>
+              <div className="flex flex-1 min-h-0">
+                <Window>
+                  <ChannelCallBar
+                    onStartVideo={async (ch) => {
+                      try {
+                        const id = ch?.id || (ch?.cid ? ch.cid.replace(':', '-') : 'graedufy-call')
+                        const invite = { callId: id, mode: 'video', type: 'initial', from: client.userID, inviter: client.userID, ts: Date.now() }
+                        await ch.sendMessage({ text: 'Video call invite', callInvite: invite })
+                        setOutgoingReq({ ...invite, channel: ch })
+                        setCallAccepted({ callId: null, by: null })
+                      } catch {}
+                    }}
+                    onStartVoice={async (ch) => {
+                      try {
+                        const id = ch?.id || (ch?.cid ? ch.cid.replace(':', '-') : 'graedufy-call')
+                        const invite = { callId: id, mode: 'voice', type: 'initial', from: client.userID, inviter: client.userID, ts: Date.now() }
+                        await ch.sendMessage({ text: 'Voice call invite', callInvite: invite })
+                        setOutgoingReq({ ...invite, channel: ch })
+                        setCallAccepted({ callId: null, by: null })
+                      } catch {}
+                    }}
+                  />
+                  <ChannelHeader />
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex-1 min-h-0">
+                      <MessageList />
+                    </div>
+                    <div className="border-t border-base-300 bg-base-100">
+                      <MessageInput focus />
+                    </div>
+                  </div>
+                </Window>
+                <Thread />
+              </div>
               <CallInviteHandler
                 onIncoming={(inv) => {
                   if (inv.from === client.userID) return
@@ -392,64 +586,69 @@ export default function Chat() {
         />
       </StreamChatUI>
 
-      {/* Incoming Call Modal */}
+      {/* Incoming Call Floating Pop-up */}
       {incomingReq && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-base-100 border border-base-300 rounded-2xl shadow-xl max-w-sm w-full">
-            <div className="p-6 text-center">
-              <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
+        <div className="fixed z-[10000] right-4 bottom-4 md:right-6 md:bottom-6 w-full max-w-sm">
+          <div className="bg-base-100 border border-base-300 shadow-2xl rounded-2xl p-4 flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                {incomingReq.mode === 'voice' ? (
+                  <Phone className="w-6 h-6 text-primary" />
+                ) : (
+                  <Video className="w-6 h-6 text-primary" />
+                )}
               </div>
-              <h3 className="font-bold text-xl mb-2">
-                Incoming {incomingReq.mode === 'voice' ? 'Voice' : 'Video'} Call
-              </h3>
-              <p className="text-base-content/70 mb-6">from {incomingReq.from}</p>
-              <div className="flex gap-3 justify-center">
-                <button 
-                  className="btn btn-error btn-sm gap-2"
-                  onClick={async () => { 
-                    const { channel, ...rest } = incomingReq; 
-                    try { 
-                      await channel.sendMessage({ 
-                        text: 'Call declined', 
-                        callResponse: { ...rest, status: 'declined', from: client.userID } 
-                      }) 
-                    } catch {}; 
-                    setIncomingReq(null) 
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  Decline
-                </button>
-                <button 
-                  className="btn btn-success btn-sm gap-2"
-                  onClick={async () => {
-                    const { channel, ...rest } = incomingReq
-                    if (rest?.type !== 'add' && callAccepted.callId === incomingReq.callId && callAccepted.by && callAccepted.by !== client.userID) { 
-                      setIncomingReq(null); 
-                      return 
-                    }
-                    try { 
-                      await channel.sendMessage({ 
-                        text: 'Call accepted', 
-                        callResponse: { ...rest, inviter: rest.inviter || rest.from, status: 'accepted', from: client.userID } 
-                      }) 
-                    } catch {}
-                    if (rest?.type !== 'add') setCallAccepted({ callId: incomingReq.callId, by: client.userID })
-                    setCallModal({ open: true, id: incomingReq.callId, mode: incomingReq.mode })
-                    setCurrentCallChannel(channel); setCallRole('callee'); setIncomingReq(null)
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                  Accept
-                </button>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-base-content/70">Incoming {incomingReq.mode === 'voice' ? 'voice' : 'video'} call</div>
+                <div className="font-semibold truncate">{incomingReq.from}</div>
               </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="btn btn-error flex-1 gap-2"
+                onClick={async () => {
+                  const { channel, ...rest } = incomingReq
+                  try {
+                    await channel.sendMessage({
+                      text: 'Call declined',
+                      callResponse: { ...rest, status: 'declined', from: client.userID },
+                    })
+                  } catch {}
+                  setIncomingReq(null)
+                }}
+              >
+                <PhoneOff size={18} />
+                Decline
+              </button>
+              <button
+                className="btn btn-success flex-1 gap-2"
+                onClick={async () => {
+                  const { channel, ...rest } = incomingReq
+                  if (
+                    rest?.type !== 'add' &&
+                    callAccepted.callId === incomingReq.callId &&
+                    callAccepted.by &&
+                    callAccepted.by !== client.userID
+                  ) {
+                    setIncomingReq(null)
+                    return
+                  }
+                  try {
+                    await channel.sendMessage({
+                      text: 'Call accepted',
+                      callResponse: { ...rest, inviter: rest.inviter || rest.from, status: 'accepted', from: client.userID },
+                    })
+                  } catch {}
+                  if (rest?.type !== 'add') setCallAccepted({ callId: incomingReq.callId, by: client.userID })
+                  setCallModal({ open: true, id: incomingReq.callId, mode: incomingReq.mode })
+                  setCurrentCallChannel(channel)
+                  setCallRole('callee')
+                  setIncomingReq(null)
+                }}
+              >
+                <Check size={18} />
+                Answer
+              </button>
             </div>
           </div>
         </div>
@@ -458,13 +657,15 @@ export default function Chat() {
       {/* Outgoing Call Modal */}
       {outgoingReq && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-base-100 border border-base-300 rounded-2xl shadow-xl max-w-sm w-full">
-            <div className="p-6 text-center">
-              <div className="loading loading-spinner loading-lg text-primary mb-4"></div>
-              <h3 className="font-bold text-xl mb-2">Calling...</h3>
+          <div className="bg-base-100 border border-base-300 rounded-2xl shadow-xl max-w-sm w-full animate-in fade-in zoom-in-95">
+            <div className="p-8 text-center">
+              <div className="loading loading-spinner loading-lg text-primary mb-6"></div>
+              <h3 className="font-bold text-xl mb-2">
+                Calling...
+              </h3>
               <p className="text-base-content/70 mb-6">Waiting for answer</p>
               <button 
-                className="btn btn-ghost btn-sm"
+                className="btn btn-outline btn-lg gap-2"
                 onClick={async () => { 
                   try { 
                     await outgoingReq.channel.sendMessage({ 
@@ -475,6 +676,7 @@ export default function Chat() {
                   setOutgoingReq(null) 
                 }}
               >
+                <X size={20} />
                 Cancel Call
               </button>
             </div>
@@ -504,6 +706,7 @@ export default function Chat() {
           mode={callModal.mode}
           channel={currentCallChannel}
           friends={friends}
+          isMobile={isMobile}
         />
       )}
     </div>

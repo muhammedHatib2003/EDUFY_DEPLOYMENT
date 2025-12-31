@@ -69,6 +69,7 @@ export default function Onboarding() {
         role: form.role,
         age: Number(form.age),
         handle: form.handle.trim(),
+        avatarUrl: user?.imageUrl,
       }
       if (form.bio) payload.bio = form.bio.trim()
       await http.post('/users/onboard', payload)

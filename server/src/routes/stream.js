@@ -1,6 +1,7 @@
 import express from 'express'
 import { StreamChat } from 'stream-chat'
 import * as StreamNodeSdk from '@stream-io/node-sdk'
+import { clerkClient } from '@clerk/express'
 import User from '../models/User.js'
 
 const router = express.Router()
@@ -55,6 +56,17 @@ function sanitizeUserId(id) {
   return String(id).replace(/^@/, '').replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
+async function fetchClerkAvatar(clerkId) {
+  if (!clerkId) return null
+  try {
+    const u = await clerkClient.users.getUser(clerkId)
+    return u?.imageUrl || null
+  } catch (err) {
+    console.error('Failed to fetch Clerk avatar for', clerkId, err)
+    return null
+  }
+}
+
 // Create chat token
 router.post('/token/chat', async (req, res) => {
   try {
@@ -69,10 +81,25 @@ router.post('/token/chat', async (req, res) => {
 
     const streamUserId = me.streamUserId || me.handle || me.clerkId
 
+    // Ensure we have an avatar (fallback to Clerk)
+    let image = me.avatarUrl
+    if (!image) {
+      image = await fetchClerkAvatar(me.clerkId)
+      if (image) {
+        try {
+          me.avatarUrl = image
+          await me.save()
+        } catch (err) {
+          console.error('Failed to persist avatarUrl', err)
+        }
+      }
+    }
+
     await chat.upsertUser({
       id: String(streamUserId),
       name: [me.firstName, me.lastName].filter(Boolean).join(' ') || me.handle || 'User',
-      role: 'user', // ✅ Always valid
+      image: image || undefined,
+      role: 'user', // Always valid
     })
 
     if (!me.streamUserId) {
@@ -161,9 +188,21 @@ router.post('/users/upsert', async (req, res) => {
     const responseUsers = []
     for (const u of found) {
       const streamUserId = String(u.streamUserId || u.handle || u.clerkId)
+      let image = u.avatarUrl
+      if (!image && u.clerkId) {
+        image = await fetchClerkAvatar(u.clerkId)
+        if (image) {
+          try {
+            await User.updateOne({ _id: u._id }, { $set: { avatarUrl: image } })
+          } catch (err) {
+            console.error('Failed to persist avatarUrl (bulk)', err)
+          }
+        }
+      }
       toUpsert.push({
         id: streamUserId,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.handle || 'User',
+        image: image || undefined,
         role: 'user',
       })
       responseUsers.push({ handle: u.handle, clerkId: u.clerkId, userId: streamUserId })
@@ -207,3 +246,14 @@ router.get('/diag', (req, res) => {
 })
 
 export default router
+
+
+
+
+
+
+
+
+
+
+

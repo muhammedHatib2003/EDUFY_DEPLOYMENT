@@ -266,12 +266,11 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   }, [call])
 
   return (
-    <div className={`fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[9999] ${expanded ? 'p-2 sm:p-4' : 'p-4'}`}>
-      <div className={`relative w-full ${expanded ? 'max-w-none h-[95vh]' : 'max-w-7xl h-[90vh]'} rounded-3xl overflow-hidden shadow-2xl border border-white/20 bg-gradient-to-br from-gray-900 to-black flex flex-col`}>
-        
+    <div className="fixed inset-0 z-[9999] bg-black text-white">
+      <div className="relative w-full h-full flex flex-col">
         {/* Error Alert */}
         {error && (
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full">
+          <div className="absolute top-3 inset-x-3 z-50">
             <div className="alert alert-error shadow-lg">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -286,158 +285,34 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
           </div>
         )}
 
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden pt-14 pb-28 sm:pb-32">
           {client && call ? (
             <VideoSDK.StreamVideo client={client}>
               <VideoSDK.StreamCall call={call}>
                 <div className="absolute inset-0 bg-gray-900">
-                  {/* Enhanced Header */}
-                  <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-black/80 to-black/60 backdrop-blur-md border-b border-white/10 z-10">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                      <h2 className="font-bold text-white text-lg">
-                        {mode === 'voice' ? 'Voice Call' : 'Video Call'}
-                      </h2>
-                      <div className="text-sm text-white/60">
-                        {callLabel}
+                  {/* Floating Header */}
+                  <div className="absolute top-0 left-0 right-0 z-20 px-3 py-2 flex items-center justify-between bg-black/70 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                      <div className="leading-tight">
+                        <div className="text-sm font-semibold">{mode === 'voice' ? 'Voice Call' : 'Video Call'}</div>
+                        <div className="text-xs text-white/60">{callLabel}</div>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => setExpanded((s) => !s)}
-                        className="btn btn-ghost btn-sm text-white hover:bg-white/20 gap-2"
+                        className="btn btn-ghost btn-xs text-white"
                         title={expanded ? 'Collapse call window' : 'Expand call window'}
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          {expanded ? (
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h8M4 16h8m-6 4l-6-6 6-6m10 12l6-6-6-6" />
-                          ) : (
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9h6M4 15h6m5-9h5v5m0 4v5h-5m-4 0H6v-5m0-4V5h5" />
-                          )}
-                        </svg>
-                        {expanded ? 'Collapse' : 'Expand'}
+                        {expanded ? 'Compact' : 'Expand'}
                       </button>
-
-                      {/* Quick Controls */}
-                      <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2">
-                        {/* Audio Toggle */}
-                        <button
-                          onClick={toggleAudio}
-                          className={`btn btn-sm gap-2 ${
-                            isAudioMuted 
-                              ? 'btn-error text-white' 
-                              : 'btn-ghost text-white hover:bg-white/20'
-                          }`}
-                          title={isAudioMuted ? 'Unmute' : 'Mute'}
-                        >
-                          {isAudioMuted ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6a7.975 7.975 0 014.242 1.226l-4.242 4.243V6zM5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                            </svg>
-                          )}
-                        </button>
-
-                        {/* Video Toggle - Only show for video calls */}
-                        {mode !== 'voice' && (
-                          <button
-                            onClick={toggleVideo}
-                            className={`btn btn-sm gap-2 ${
-                              isVideoMuted 
-                                ? 'btn-error text-white' 
-                                : 'btn-ghost text-white hover:bg-white/20'
-                            }`}
-                            title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}
-                          >
-                            {isVideoMuted ? (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                              </svg>
-                            ) : (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-
-                        {/* Screen Share */}
-                        {canShareScreen && (
-                          <button
-                            onClick={toggleScreenShare}
-                            className={`btn btn-sm gap-2 ${isScreenSharing ? 'btn-primary text-white' : 'btn-ghost text-white hover:bg-white/20'}`}
-                            title={isScreenSharing ? 'Stop sharing screen' : 'Share screen'}
-                            aria-pressed={isScreenSharing}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                            {isScreenSharing ? 'Sharing' : 'Share'}
-                          </button>
-                        )}
-
-                        {/* Participants */}
-                        <button
-                          className="btn btn-ghost btn-sm text-white hover:bg-white/20 gap-2"
-                          title="View participants"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Live class summary */}
-                      <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2">
-                        <input
-                          type="text"
-                          className="input input-xs input-bordered bg-white/10 text-white placeholder:text-white/60"
-                          placeholder="Topic (optional)"
-                          value={summaryTopic}
-                          onChange={(e) => setSummaryTopic(e.target.value)}
-                        />
-                        {!isRecording ? (
-                          <button className="btn btn-xs btn-primary" onClick={startRecording}>Record</button>
-                        ) : (
-                          <button className="btn btn-xs btn-secondary" onClick={stopRecording}>Stop</button>
-                        )}
-                        <button
-                          className="btn btn-xs btn-accent"
-                          disabled={processingSummary || isRecording || !audioBlob}
-                          onClick={summarizeAudio}
-                        >
-                          {processingSummary ? 'Working...' : 'Send summary'}
-                        </button>
-                      </div>
-
-                      {channel && (
-                        <button
-                          className="btn btn-outline btn-sm text-white border-white/30 hover:bg-white/20 hover:border-white/50 gap-2"
-                          onClick={() => setAddOpen(true)}
-                          title="Add people to call"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Add People
-                        </button>
-                      )}
-                      
                       <button
                         onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
-                        className="btn btn-error btn-sm gap-2 font-semibold"
+                        className="btn btn-error btn-xs"
                         title="End call"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        End Call
+                        End
                       </button>
                     </div>
                   </div>
@@ -446,7 +321,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                   {VideoSDK.CallContent ? (
                     <VideoSDK.CallContent />
                   ) : (
-                    <div className="h-full flex flex-col pt-16 pb-24 relative">
+                    <div className="h-full flex flex-col relative">
                       {VideoSDK.SpeakerLayout ? (
                         <VideoSDK.SpeakerLayout />
                       ) : (
@@ -458,88 +333,93 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                         </div>
                       )}
 
-                      {/* Enhanced Call Controls */}
-                      {VideoSDK.CallControls && (
-                        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
-                          <div className="bg-black/60 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-                            <div className="flex items-center gap-4">
-                              {/* Custom Audio Control */}
+
+                      {/* Bottom Controls */}
+                      <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/80 border-t border-white/10 p-3 sm:p-4">
+                        <div className="max-w-4xl mx-auto space-y-2">
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <button
+                              onClick={toggleAudio}
+                              className={`btn btn-sm ${isAudioMuted ? 'btn-error' : 'btn-ghost border border-white/20 text-white'}`}
+                              aria-pressed={isAudioMuted}
+                            >
+                              {isAudioMuted ? 'Unmute' : 'Mute'}
+                            </button>
+                            {mode !== 'voice' && (
                               <button
-                                onClick={toggleAudio}
-                                className={`btn btn-circle btn-lg ${
-                                  isAudioMuted 
-                                    ? 'btn-error text-white' 
-                                    : 'btn-ghost text-white hover:bg-white/20'
-                                }`}
-                                title={isAudioMuted ? 'Unmute microphone' : 'Mute microphone'}
+                                onClick={toggleVideo}
+                                className={`btn btn-sm ${isVideoMuted ? 'btn-error' : 'btn-ghost border border-white/20 text-white'}`}
+                                aria-pressed={isVideoMuted}
                               >
-                                {isAudioMuted ? (
-                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 6a7.975 7.975 0 014.242 1.226l-4.242 4.243V6zM5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                  </svg>
-                                )}
+                                {isVideoMuted ? 'Camera Off' : 'Camera On'}
                               </button>
-
-                              {/* Custom Video Control */}
-                              {mode !== 'voice' && (
-                                <button
-                                  onClick={toggleVideo}
-                                  className={`btn btn-circle btn-lg ${
-                                    isVideoMuted 
-                                      ? 'btn-error text-white' 
-                                      : 'btn-ghost text-white hover:bg-white/20'
-                                  }`}
-                                  title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}
-                                >
-                                  {isVideoMuted ? (
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                                    </svg>
-                                  ) : (
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                    </svg>
-                                  )}
-                                </button>
-                              )}
-
-                              {/* Screen Share Control */}
-                              {canShareScreen && (
-                                <button
-                                  onClick={toggleScreenShare}
-                                  className={`btn btn-circle btn-lg ${isScreenSharing ? 'btn-primary text-white' : 'btn-ghost text-white hover:bg-white/20'}`}
-                                  title={isScreenSharing ? 'Stop sharing screen' : 'Share your screen'}
-                                  aria-pressed={isScreenSharing}
-                                >
-                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                  </svg>
-                                </button>
-                              )}
-
-                              {/* End Call Button */}
+                            )}
+                            {canShareScreen && (
                               <button
-                                onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
-                                className="btn btn-circle btn-lg btn-error text-white"
-                                title="End call"
+                                onClick={toggleScreenShare}
+                                className={`btn btn-sm ${isScreenSharing ? 'btn-primary' : 'btn-ghost border border-white/20 text-white'}`}
+                                aria-pressed={isScreenSharing}
                               >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                                {isScreenSharing ? 'Stop Share' : 'Share Screen'}
                               </button>
-                            </div>
+                            )}
+                            <button className="btn btn-ghost btn-sm border border-white/20 text-white">
+                              Participants
+                            </button>
+                            {channel && (
+                              <button
+                                className="btn btn-outline btn-sm text-white border-white/30"
+                                onClick={() => setAddOpen(true)}
+                                title="Add people to call"
+                              >
+                                Add People
+                              </button>
+                            )}
+                            <button
+                              onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
+                              className="btn btn-error btn-sm"
+                              title="End call"
+                            >
+                              End
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              className="input input-xs input-bordered bg-white/10 text-white placeholder:text-white/60 flex-1 min-w-[160px]"
+                              placeholder="Topic (optional)"
+                              value={summaryTopic}
+                              onChange={(e) => setSummaryTopic(e.target.value)}
+                            />
+                            {!isRecording ? (
+                              <button className="btn btn-xs btn-primary" onClick={startRecording}>Record</button>
+                            ) : (
+                              <button className="btn btn-xs btn-secondary" onClick={stopRecording}>Stop</button>
+                            )}
+                            <button
+                              className="btn btn-xs btn-accent"
+                              disabled={processingSummary || isRecording || !audioBlob}
+                              onClick={summarizeAudio}
+                            >
+                              {processingSummary ? 'Working...' : 'Send summary'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Voice-only overlay */}
+                      {mode === 'voice' && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="flex flex-col items-center gap-3 bg-black/50 px-4 py-3 rounded-xl">
+                            <div className="w-16 h-16 rounded-full bg-primary/30 border border-primary/60" />
+                            <div className="text-sm text-white/80">Voice call in progress</div>
                           </div>
                         </div>
                       )}
 
                       {(isRecording || audioBlob || summary || transcript || summaryError) && (
-                        <div className="absolute bottom-4 right-4 w-full max-w-md bg-black/70 border border-white/10 rounded-xl p-4 backdrop-blur-md space-y-2">
+                        <div className="absolute bottom-4 right-4 w-full max-w-md bg-black/80 border border-white/10 rounded-xl p-4 space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="font-semibold text-white text-sm">Live class summary</div>
                             <div className="text-xs text-white/60">
@@ -572,7 +452,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                             </div>
                           )}
                           {!summary && !summaryError && audioBlob && !processingSummary && (
-                            <div className="text-xs text-white/60">Audio captured. Click "Send summary" in the header.</div>
+                            <div className="text-xs text-white/60">Audio captured. Tap "Send summary" below.</div>
                           )}
                         </div>
                       )}
