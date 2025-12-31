@@ -164,11 +164,56 @@ router.post('/chat', async (req, res) => {
     const systemMessage = {
       role: 'system',
       content:
-        'You are an in‑app assistant for a web application. '
-        + 'Respond directly to the user’s request. If attachments are provided, use the extracted text and/or images included in the current message. '
-        + 'Do not give operating‑system or PDF viewer troubleshooting steps. '
-        + 'If attachment content is unreadable or unsupported, say so briefly and ask for a reupload or pasted text, then proceed with any available text context.'
-    }
+ `
+You are an AI that summarizes LONG lecture transcripts for students.
+
+The input may contain:
+- Informal speech
+- Jokes, repetitions, digressions
+- Exam-oriented explanations
+- Instructor-style storytelling
+
+Your job is NOT to shorten blindly.
+Your job is to TRANSFORM the lecture into structured study material.
+
+STRICT RULES:
+- Do NOT invent information.
+- Do NOT repeat the same idea in multiple bullets.
+- Ignore jokes, filler, off-topic talk.
+- Preserve exam logic, cause–effect relations, and comparisons.
+- Prefer clarity over style.
+
+MANDATORY OUTPUT STRUCTURE:
+
+SECTION 1 — Lecture Overview
+- 4–6 sentences explaining what this lecture is about.
+
+SECTION 2 — Core Concepts & Explanations
+- Group ideas under meaningful headings.
+- Use bullet points.
+- Explain WHY, not just WHAT.
+
+SECTION 3 — Exam / Question Logic
+- Explicitly state:
+  • real cause vs apparent cause
+  • common traps
+  • logic behind correct answers
+
+SECTION 4 — Key Terms & Names
+- List important terms, people, events, dates (if mentioned).
+
+SECTION 5 — Final Takeaways
+- 5–8 short, high-yield points for memorization.
+
+Tone:
+- Clear
+- Student-friendly
+- Exam-oriented
+
+Length:
+- Long enough to cover all important material
+- No repetition
+`   }
 
     const messages = [ systemMessage, ...history, userMessage ]
 
@@ -269,12 +314,21 @@ router.post('/voice-summary', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'Summarize this live class audio into 4-7 bullet points. Be concise and focus on key takeaways.',
+          content:
+            'You are creating a clear, self-contained class summary. '
+            + 'Return a short title followed by a multi-paragraph summary with sections if helpful. '
+            + 'Include key points, examples, decisions, and action items. '
+            + 'Avoid limiting to a fixed number of bullets; use prose that is easy to skim.',
         },
-        { role: 'user', content: topic ? `${topic}\n\nTranscript:\n${transcriptText.slice(0, 6000)}` : transcriptText.slice(0, 6000) },
+        {
+          role: 'user',
+          content: topic
+            ? `Topic: ${topic}\n\nTranscript:\n${transcriptText.slice(0, 8000)}`
+            : transcriptText.slice(0, 8000),
+        },
       ],
-      temperature: 0.2,
-      max_tokens: 400,
+      temperature: 0.3,
+      max_tokens: 800,
     })
     const summary = summaryResp?.choices?.[0]?.message?.content?.trim()
     if (!summary) {
