@@ -11,7 +11,7 @@ import {
   PlusCircle,
   Sparkles,
 } from 'lucide-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
 const dayKey = (date) => {
   try {
@@ -54,8 +54,7 @@ export default function Dashboard() {
     setLoading(true)
     setError('')
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = authedApi(await getToken())
       const [meRes, classRes, scheduleRes] = await Promise.all([
         http.get('/users/me'),
         http.get('/classrooms'),
@@ -79,8 +78,7 @@ export default function Dashboard() {
 
   const fetchScheduleOnly = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = authedApi(await getToken())
       const { data } = await http.get('/schedule')
       setItems(Array.isArray(data.items) ? data.items : [])
     } catch (e) {
@@ -97,8 +95,7 @@ export default function Dashboard() {
     setSaving(true)
     setError('')
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = authedApi(await getToken())
       await http.post('/schedule', {
         classId: form.classId,
         title: form.title.trim(),

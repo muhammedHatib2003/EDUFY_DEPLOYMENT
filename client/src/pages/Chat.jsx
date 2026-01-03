@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import { StreamChat } from 'stream-chat'
 import {
   Chat as StreamChatUI,
@@ -53,8 +53,7 @@ function CreateChatModal({ open, onClose, client, friends }) {
       // Ensure all selected users exist in Stream Chat before creating the channel
       let friendIds = []
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+        const http = await authedApi(getToken)
         const { data } = await http.post('/stream/users/upsert', { identifiers: chosen })
         friendIds = Array.isArray(data?.users) ? data.users.map(u => u.userId).filter(Boolean) : []
       } catch (_) {}
@@ -320,8 +319,7 @@ export default function Chat() {
     let mounted = true
     const init = async () => {
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+      const http = await authedApi(getToken)
         const me = await http.get('/users/me')
         if (!me.data.user.onboarded) return navigate('/onboarding')
 

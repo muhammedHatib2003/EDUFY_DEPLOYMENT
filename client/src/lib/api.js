@@ -3,14 +3,13 @@ import axios from 'axios'
 export const apiBase =
   (import.meta.env.VITE_API_URL || 'http://localhost:5001') + '/api'
 
-export function authedApi(token) {
+export async function authedApi(getToken) {
+  const token = await getToken()
+
   return axios.create({
     baseURL: apiBase,
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   })
-}
-
-export default {
-  authedApi,
-  apiBase,
 }

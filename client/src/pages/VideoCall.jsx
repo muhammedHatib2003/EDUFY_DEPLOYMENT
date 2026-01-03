@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import * as VideoSDK from '@stream-io/video-react-sdk'
 import '@stream-io/video-react-sdk/dist/css/styles.css'
 import { AiService } from '../services/ai'
@@ -70,8 +70,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     let mounted = true
     const init = async () => {
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+        const http = authedApi(await getToken())
         const { data } = await http.post('/stream/token/video')
 
         const c = new VideoSDK.StreamVideoClient({

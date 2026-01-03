@@ -3,7 +3,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CourseService } from '../services/courses'
 import JoinCourseModal from '../components/JoinCourseModal'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
 export default function CourseDetails() {
   const { id } = useParams()
@@ -43,7 +43,7 @@ export default function CourseDetails() {
       })
       if (token) {
         try {
-          const http = api.authedApi(token)
+          const http = authedApi(token)
           const { data: meData } = await http.get('/users/me')
           setMe(meData.user)
         } catch {

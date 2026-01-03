@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react'
-import { SignedIn, SignedOut, SignIn, SignUp, RedirectToSignIn, useAuth } from '@clerk/clerk-react'
+import {
+  SignedIn,
+  SignedOut,
+  SignIn,
+  SignUp,
+  RedirectToSignIn,
+  useAuth,
+  useClerk,
+} from '@clerk/clerk-react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { App as CapacitorApp } from '@capacitor/app'
+
 import Sidebar from './components/Sidebar.jsx'
 import NotificationsProvider from './components/NotificationsProvider.jsx'
 import NotificationsBell from './components/NotificationsBell.jsx'
+import CallToastListener from './components/CallToastListener.jsx'
+
 import Onboarding from './pages/Onboarding.jsx'
 import Profile from './pages/Profile.jsx'
 import Feed from './pages/Feed.jsx'
-import GroqChat from './pages/GroqChat.jsx'
 import Friends from './pages/Friends.jsx'
 import Chat from './pages/Chat.jsx'
 import Classrooms from './pages/Classrooms.jsx'
@@ -20,38 +31,80 @@ import LessonViewer from './pages/LessonViewer.jsx'
 import Summaries from './pages/Summaries.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Todos from './pages/Todos.jsx'
-import CallToastListener from './components/CallToastListener.jsx'
-import api from './lib/api'
+import GeminiChat from './pages/GeminiChat.jsx'
 
+import { authedApi } from './lib/api.js'
+
+/* =========================================================
+   CLERK DEEP LINK HANDLER (ANDROID / IOS)
+   ========================================================= */
+function ClerkDeepLinkHandler() {
+  const { clerk } = useClerk()
+  const { isLoaded } = useAuth()
+
+  useEffect(() => {
+    if (!isLoaded || !clerk) return
+
+    const sub = CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+      if (!url) return
+      try {
+        console.log('[DEEP LINK]', url)
+        await clerk.handleRedirectCallback(url)
+        console.log('[CLERK] redirect handled')
+      } catch (err) {
+        console.error('[CLERK] redirect error', err)
+      }
+    })
+
+    return () => sub.remove()
+  }, [isLoaded, clerk])
+
+  return null
+}
+
+/* =========================================================
+   AUTHED LAYOUT (NO BLANK SCREEN)
+   ========================================================= */
 function AuthedLayout() {
-  const { getToken } = useAuth()
+  const { getToken, isLoaded } = useAuth()
   const navigate = useNavigate()
+
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
+    if (!isLoaded) return
+
     let cancelled = false
+
     const verifyOnboarded = async () => {
       try {
         const token = await getToken()
-        const http = api.authedApi(token)
+        if (!token) {
+          setChecking(false)
+          return
+        }
+
+        const http = await authedApi(getToken)
         const { data } = await http.get('/users/me')
+
         if (!data?.user?.onboarded) {
           navigate('/onboarding', { replace: true })
           return
         }
       } catch (err) {
-        // If we can't verify, push to onboarding to be safe
-        navigate('/onboarding', { replace: true })
-        return
+        // ❗ Hata = onboarding demek değil
+        console.warn('[verifyOnboarded] skipped', err)
       } finally {
         if (!cancelled) setChecking(false)
       }
     }
+
     verifyOnboarded()
+
     return () => {
       cancelled = true
     }
-  }, [getToken, navigate])
+  }, [isLoaded, getToken, navigate])
 
   if (checking) {
     return (
@@ -69,10 +122,8 @@ function AuthedLayout() {
         <div className="drawer-content flex flex-col">
           <div className="w-full navbar bg-base-100 border-b min-h-0 h-10 px-2">
             <div className="flex-none">
-              <label htmlFor="app-drawer" className="btn btn-ghost btn-square btn-xs" aria-label="Toggle sidebar">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-                </svg>
+              <label htmlFor="app-drawer" className="btn btn-ghost btn-square btn-xs">
+                ☰
               </label>
             </div>
             <div className="flex-1 pl-2 font-bold text-sm">graEDUFY</div>
@@ -80,6 +131,7 @@ function AuthedLayout() {
               <NotificationsBell />
             </div>
           </div>
+
           <div className="flex-1 overflow-auto p-4">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -90,9 +142,8 @@ function AuthedLayout() {
               <Route path="/feed" element={<Feed />} />
               <Route path="/friends" element={<Friends />} />
               <Route path="/chat" element={<Chat />} />
-              <Route path="/groq" element={<GroqChat />} />
+              <Route path="/assistant" element={<GeminiChat />} />
               <Route path="/classrooms" element={<Classrooms />} />
-              <Route path="/classrooms/:id" element={<ClassroomView />} />
               <Route path="/classrooms/:id" element={<ClassroomView />} />
               <Route path="/courses" element={<Courses />} />
               <Route path="/courses/create" element={<CreateCourse />} />
@@ -103,8 +154,9 @@ function AuthedLayout() {
             </Routes>
           </div>
         </div>
+
         <div className="drawer-side">
-          <label htmlFor="app-drawer" className="drawer-overlay" aria-label="close sidebar"></label>
+          <label htmlFor="app-drawer" className="drawer-overlay" />
           <Sidebar />
         </div>
       </div>
@@ -112,37 +164,49 @@ function AuthedLayout() {
   )
 }
 
+/* =========================================================
+   APP ROOT
+   ========================================================= */
 export default function App() {
   return (
-    <Routes>
-      <Route
-        path="/onboarding"
-        element={
-          <SignedIn>
-            <Onboarding />
-          </SignedIn>
-        }
-      />
-      <Route
-        path="/sign-in/*"
-        element={<SignIn routing="path" path="/sign-in" afterSignInUrl="/onboarding" />} />
-      <Route
-        path="/sign-up/*"
-        element={<SignUp routing="path" path="/sign-up" afterSignUpUrl="/onboarding" />} />
+    <>
+      {/* ANDROID / IOS DEEP LINK */}
+      <ClerkDeepLinkHandler />
 
-      <Route
-        path="/*"
-        element={
-          <>
+      <Routes>
+        <Route
+          path="/onboarding"
+          element={
             <SignedIn>
-              <AuthedLayout />
+              <Onboarding />
             </SignedIn>
-            <SignedOut>
-              <RedirectToSignIn />
-            </SignedOut>
-          </>
-        }
-      />
-    </Routes>
+          }
+        />
+
+        <Route
+          path="/sign-in/*"
+          element={<SignIn routing="path" path="/sign-in" afterSignInUrl="/onboarding" />}
+        />
+
+        <Route
+          path="/sign-up/*"
+          element={<SignUp routing="path" path="/sign-up" afterSignUpUrl="/onboarding" />}
+        />
+
+        <Route
+          path="/*"
+          element={
+            <>
+              <SignedIn>
+                <AuthedLayout />
+              </SignedIn>
+              <SignedOut>
+                <RedirectToSignIn />
+              </SignedOut>
+            </>
+          }
+        />
+      </Routes>
+    </>
   )
 }

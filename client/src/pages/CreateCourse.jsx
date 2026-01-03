@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useNavigate } from 'react-router-dom'
 import { CourseService } from '../services/courses'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
 export default function CreateCourse() {
   const { getToken } = useAuth()
@@ -21,8 +21,7 @@ export default function CreateCourse() {
   useEffect(() => {
     const load = async () => {
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+        const http = await authedApi(getToken)
         const { data } = await http.get('/users/me')
         setMe(data.user)
       } catch {

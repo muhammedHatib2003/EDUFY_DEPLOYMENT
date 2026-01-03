@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Heart, Loader2, MessageCircle, Users } from 'lucide-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
 function formatTime(value) {
   if (!value) return ''
@@ -48,7 +48,7 @@ export default function PublicProfile() {
         setLoading(true)
         setError('')
         const token = await getToken().catch(() => null)
-        const http = api.authedApi(token)
+        const http = authedApi(token)
         const handleParam = encodeURIComponent(safeHandle)
         const [profileRes, postsRes] = await Promise.all([
           http.get(`/public/users/profiles/${handleParam}`),

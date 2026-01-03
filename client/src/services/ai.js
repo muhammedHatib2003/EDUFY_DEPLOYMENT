@@ -1,6 +1,6 @@
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
-const http = (token) => api.authedApi(token)
+const http = (token) => authedApi(token)
 
 export const AiService = {
   voiceSummary: (token, data) => http(token).post('/ai/voice-summary', data),

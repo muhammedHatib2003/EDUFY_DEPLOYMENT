@@ -11,7 +11,7 @@ import streamRouter from './routes/stream.js'
 import feedRouter, { publicFeedRouter } from './routes/feed.js'
 import classroomsRouter from './routes/classrooms.js'
 import notificationsRouter from './routes/notifications.js'
-import aiRouter from './routes/ai.js'
+import aiRouter from './routes/ai.routes.js'
 import questionsRouter from './routes/questions.js'
 import coursesRouter from './routes/courses.js'
 import scheduleRouter from './routes/schedule.js'
@@ -29,26 +29,35 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
 const allowedOrigins = [
   'https://edufy-deployment.vercel.app',
   'http://localhost:5173',
+
+  // Capacitor / Mobile
+  'https://localhost',
+  'http://localhost',
+  'capacitor://localhost',
+  'ionic://localhost',
 ]
 
-// CORS middleware (Clerk-safe)
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (Clerk, server-to-server, mobile)
+    origin: (origin, callback) => {
+      // Mobile & server-to-server requests
       if (!origin) return callback(null, true)
 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true)
       }
 
-      return callback(new Error('Not allowed by CORS'))
+      console.log('Blocked by CORS:', origin)
+      return callback(null, false)
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 )
+
+// Preflight
+app.options('*', cors())
 
 // Handle preflight requests
 app.options('*', cors())

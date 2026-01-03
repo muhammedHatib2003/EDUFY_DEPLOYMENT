@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import ClassroomCard from '../components/ClassroomCard.jsx'
 import { useNavigate } from 'react-router-dom'
 
@@ -18,8 +18,7 @@ export default function Classrooms() {
 
   const load = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const meRes = await http.get('/users/me')
       setMe(meRes.data.user)
       const { data } = await http.get('/classrooms')
@@ -41,8 +40,7 @@ export default function Classrooms() {
     
     setCreating(true)
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const { data } = await http.post('/classrooms', { 
         name: form.name.trim(), 
         description: form.description.trim() 
@@ -63,8 +61,7 @@ export default function Classrooms() {
     
     setJoining(true)
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const { data } = await http.post('/classrooms/join', { code: form.code.trim() })
       navigate(`/classrooms/${data.classroom._id}`)
     } catch (e) { 

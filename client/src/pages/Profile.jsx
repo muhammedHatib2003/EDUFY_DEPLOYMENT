@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
-import api from "../lib/api";
+import { authedApi } from "../lib/api.js";
 import { Pencil, Check, X, Camera, UserCircle } from "lucide-react";
 
 export default function Profile() {
@@ -26,8 +26,7 @@ export default function Profile() {
 
   useEffect(() => {
     const run = async () => {
-      const token = await getToken();
-      const http = api.authedApi(token);
+      const http = await authedApi(getToken);
       const { data } = await http.get("/users/me");
       setMe(data.user);
       setPhotoPreview(user?.imageUrl);
@@ -99,8 +98,7 @@ export default function Profile() {
         }
       }
 
-      const token = await getToken();
-      const http = api.authedApi(token);
+      const http = await authedApi(getToken);
       const payload = {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),

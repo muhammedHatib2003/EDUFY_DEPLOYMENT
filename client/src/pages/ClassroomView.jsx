@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useNavigate, useParams } from 'react-router-dom'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import Tabs from '../components/Tabs.jsx'
 import VideoCall from './VideoCall.jsx'
 import { StreamChat } from 'stream-chat'
@@ -51,8 +51,7 @@ export default function ClassroomView() {
   const load = async () => {
     setLoading(true)
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const meRes = await http.get('/users/me')
       setMe(meRes.data.user)
       const { data } = await http.get(`/classrooms/${id}`)
@@ -159,8 +158,7 @@ export default function ClassroomView() {
     
     setPosting(true)
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       let attachments = []
 
       if (postMedia.length > 0) {
@@ -199,8 +197,7 @@ export default function ClassroomView() {
     setCommentsOpen(prev => ({ ...prev, [postId]: nowOpen }))
     if (nowOpen && !commentsByPost[postId]) {
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+        const http = await authedApi(getToken)
         const res = await http.get(`/classrooms/${id}/posts/${postId}/comments`)
         setCommentsByPost(prev => ({ ...prev, [postId]: res.data.comments || [] }))
       } catch (e) { 
@@ -211,8 +208,7 @@ export default function ClassroomView() {
 
   const likePost = async (postId) => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const res = await http.post(`/classrooms/${id}/posts/${postId}/like`)
       setPosts(prev => prev.map(p => 
         p._id === postId ? { 
@@ -230,8 +226,7 @@ export default function ClassroomView() {
     try {
       const text = (commentTextByPost[postId] || '').trim()
       if (!text) return
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       await http.post(`/classrooms/${id}/posts/${postId}/comments`, { text })
       setCommentTextByPost(prev => ({ ...prev, [postId]: '' }))
       const res = await http.get(`/classrooms/${id}/posts/${postId}/comments`)
@@ -249,8 +244,7 @@ export default function ClassroomView() {
 
   const createAssignment = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       // size guard
       const tooBig = assignmentFiles.find((f) => f.size > MAX_ASSIGNMENT_FILE_MB * 1024 * 1024)
       if (tooBig) {
@@ -295,8 +289,7 @@ export default function ClassroomView() {
         return
       }
       
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       await http.post(`/classrooms/${id}/assignments/${assignmentId}/submit`, { fileURL })
       const res = await http.get(`/classrooms/${id}/assignments`)
       setAssignments(res.data.assignments || [])
@@ -322,8 +315,7 @@ export default function ClassroomView() {
   }
   const createQuiz = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const body = { title: newQz.title, description: newQz.description, questions: newQz.questions }
       await http.post(`/classrooms/${id}/quizzes`, body)
       setNewQz({ open: false, title: '', description: '', questions: [] })
@@ -335,8 +327,7 @@ export default function ClassroomView() {
   }
   const startTakeQuiz = async (quizId) => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const { data } = await http.get(`/classrooms/${id}/quizzes/${quizId}`)
       const quiz = data.quiz
       setTake({ open: true, quiz, answers: new Array((quiz?.questions||[]).length).fill(null), result: null })
@@ -344,8 +335,7 @@ export default function ClassroomView() {
   }
   const submitQuiz = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const { data } = await http.post(`/classrooms/${id}/quizzes/${take.quiz._id}/submit`, { answers: take.answers })
       setTake((s)=> ({ ...s, result: data }))
       const qRes = await http.get(`/classrooms/${id}/quizzes`)
@@ -1091,7 +1081,7 @@ export default function ClassroomView() {
                                             const grade = document.getElementById(`grade-${submission._id}`).value
                                             const feedback = document.getElementById(`feedback-${submission._id}`).value
                                             const token = await getToken()
-                                            const http = api.authedApi(token)
+                                            const http = await authedApi(getToken)
                                             await http.post(`/classrooms/${id}/submissions/${submission._id}/grade`, { 
                                               grade, 
                                               feedback 

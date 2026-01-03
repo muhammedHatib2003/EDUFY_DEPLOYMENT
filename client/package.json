@@ -5,9 +5,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^5.7.4",
+    "@capacitor/app": "^5.0.7",
+    "@capacitor/core": "^5.7.4",
     "@clerk/clerk-react": "^5.6.1",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@stream-io/video-react-sdk": "^0.4.12",
@@ -22,10 +31,12 @@
     "stream-chat-react": "^12.15.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
+    "typescript": "^5.9.3",
     "vite": "^5.4.0"
   }
 }

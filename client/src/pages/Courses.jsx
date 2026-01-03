@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import CourseCard from '../components/CourseCard'
 import JoinCourseModal from '../components/JoinCourseModal'
 import { CourseService } from '../services/courses'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 
 export default function Courses() {
   const { getToken } = useAuth()
@@ -23,8 +23,7 @@ export default function Courses() {
 
   const loadMe = async () => {
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = authedApi(await getToken())
       const { data } = await http.get('/users/me')
       setMe(data.user)
     } catch {

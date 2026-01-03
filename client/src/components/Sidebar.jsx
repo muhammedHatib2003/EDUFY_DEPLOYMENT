@@ -21,10 +21,10 @@ const navItems = [
   { to: "/feed", label: "Feed", icon: <Home size={18} /> },
   { to: "/friends", label: "Friends", icon: <Users size={18} /> },
   { to: "/chat", label: "Chat", icon: <MessageSquare size={18} /> },
-  { to: "/groq", label: "Groq Assistant", icon: <Bot size={18} /> },
+  { to: "/assistant", label: "AI Chatbot", icon: <Bot size={18} /> },
+  { to: "/summaries", label: "AI Summaries", icon: <FileText size={18} /> },
   { to: "/classrooms", label: "Classrooms", icon: <Video size={18} /> },
   { to: "/courses", label: "Courses", icon: <BookOpen size={18} /> },
-  { to: "/summaries", label: "Summaries", icon: <FileText size={18} /> },
 ];
 
 const NavItem = ({ to, label, icon }) => {
@@ -51,7 +51,12 @@ export default function Sidebar() {
     <aside className="w-64 h-screen border-r bg-base-100 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b">
-        <h2 className="text-lg font-semibold">Edufy</h2>
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-base-100 font-bold text-lg shadow-sm">
+            gE
+          </div>
+          <h2 className="text-lg font-semibold">graEDUFY</h2>
+        </div>
         <ThemeToggle />
       </div>
 

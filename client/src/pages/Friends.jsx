@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { Link, useNavigate } from 'react-router-dom'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import { UserPlus, UserCheck, UserX, Users, ChevronRight, Search, User, Check, X, Clock, Mail } from 'lucide-react'
 
 export default function Friends() {
@@ -19,8 +19,7 @@ export default function Friends() {
   const load = async () => {
     try {
       setLoading(true)
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       const me = await http.get('/users/me')
       if (!me.data.user.onboarded) {
         navigate('/onboarding')
@@ -48,8 +47,7 @@ export default function Friends() {
     event.preventDefault()
     setError('')
     try {
-      const token = await getToken()
-      const http = api.authedApi(token)
+      const http = await authedApi(getToken)
       await http.post('/friends/request', { handle })
       setHandle('')
       await load()
@@ -59,8 +57,7 @@ export default function Friends() {
   }
 
   const respond = async (requestId, action) => {
-    const token = await getToken()
-    const http = api.authedApi(token)
+    const http = await authedApi(getToken)
     await http.post('/friends/respond', { requestId, action })
     await load()
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { StreamChat } from 'stream-chat'
 import { useAuth } from '@clerk/clerk-react'
 import { Phone, Video, PhoneOff, Check } from 'lucide-react'
-import api from '../lib/api'
+import { authedApi } from '../lib/api.js'
 import VideoCall from '../pages/VideoCall.jsx'
 
 // Lightweight, app-wide call invite listener so incoming calls float over any screen.
@@ -20,8 +20,7 @@ export default function CallToastListener() {
     let chat = null
     const init = async () => {
       try {
-        const token = await getToken()
-        const http = api.authedApi(token)
+        const http = authedApi(await getToken())
         const { data } = await http.post('/stream/token/chat')
         chat = StreamChat.getInstance(data.apiKey)
         if (chat.userID && chat.userID !== data.userId) {
