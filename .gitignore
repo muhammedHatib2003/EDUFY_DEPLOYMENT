@@ -30,3 +30,18 @@ Thumbs.db
 .parcel-cache
 .turbo/
 .cache/
+
+# Electron builds
+client/release/
+client/dist/
+client/electron/dist/
+*.exe
+*.apk
+*.asar
+
+# Android
+client/android/app/build/
+client/android/.gradle/
+
+# Node
+node_modules/
