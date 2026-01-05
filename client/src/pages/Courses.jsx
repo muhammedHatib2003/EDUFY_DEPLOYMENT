@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import CourseCard from '../components/CourseCard'
 import JoinCourseModal from '../components/JoinCourseModal'
 import { CourseService } from '../services/courses'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 
 export default function Courses() {
   const { getToken } = useAuth()
@@ -23,7 +23,7 @@ export default function Courses() {
 
   const loadMe = async () => {
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       const { data } = await http.get('/users/me')
       setMe(data.user)
     } catch {
@@ -34,8 +34,7 @@ export default function Courses() {
   const loadCourses = async () => {
     setLoading(true)
     try {
-      const token = await getToken().catch(() => null)
-      const { data } = await CourseService.list(token)
+      const { data } = await CourseService.list(getToken)
       setCourses(data.courses || [])
     } catch {
       setCourses([])
@@ -57,8 +56,7 @@ export default function Courses() {
     setJoinLoading(true)
     setJoinError('')
     try {
-      const token = await getToken()
-      await CourseService.join(token, course._id, code)
+      await CourseService.join(getToken, course._id, code)
       setModalCourse(null)
       await loadCourses()
     } catch (err) {

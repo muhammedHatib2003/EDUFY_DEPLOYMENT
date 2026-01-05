@@ -20,7 +20,7 @@ export default function CallToastListener() {
     let chat = null
     const init = async () => {
       try {
-        const http = authedApi(await getToken())
+        const http = await authedApi(getToken)
         const { data } = await http.post('/stream/token/chat')
         chat = StreamChat.getInstance(data.apiKey)
         if (chat.userID && chat.userID !== data.userId) {

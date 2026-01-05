@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 import Tabs from '../components/Tabs.jsx'
 import VideoCall from './VideoCall.jsx'
 import { StreamChat } from 'stream-chat'

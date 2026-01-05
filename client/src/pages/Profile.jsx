@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
-import { authedApi } from "../lib/api.js";
+import { authedApi } from "@/lib/api";
 import { Pencil, Check, X, Camera, UserCircle } from "lucide-react";
 
 export default function Profile() {

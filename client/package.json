@@ -2,6 +2,7 @@
   "name": "graedufy-client",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +12,34 @@
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios",
     "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios"
+    "cap:open:ios": "npx cap open ios",
+    "dev:electron": "concurrently -k \"npm:dev\" \"npm:electron\"",
+    "electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:5173 electron ./electron/main.js",
+    "build:electron": "cross-env VITE_ELECTRON=true npm run build",
+    "start:electron": "npm run build:electron && cross-env NODE_ENV=production electron ./electron/main.js",
+    "dist:electron:win": "npm run build:electron && electron-builder build --win"
+  },
+  "build": {
+    "appId": "com.graedufy.app",
+    "productName": "GraEDUFY",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
   },
   "dependencies": {
     "@capacitor/android": "^5.7.4",
@@ -34,9 +62,14 @@
     "@capacitor/cli": "^6.2.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.9.3",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "wait-on": "^7.2.0"
   }
 }

@@ -3,7 +3,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CourseService } from '../services/courses'
 import JoinCourseModal from '../components/JoinCourseModal'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 
 export default function CourseDetails() {
   const { id } = useParams()
@@ -32,7 +32,7 @@ export default function CourseDetails() {
     setLoading(true)
     try {
       const token = await getToken().catch(() => null)
-      const { data } = await CourseService.getOne(token, id)
+      const { data } = await CourseService.getOne(getToken, id)
       setCourse(data.course)
       setEditForm({
         title: data.course.title,
@@ -43,7 +43,7 @@ export default function CourseDetails() {
       })
       if (token) {
         try {
-          const http = authedApi(token)
+          const http = await authedApi(getToken)
           const { data: meData } = await http.get('/users/me')
           setMe(meData.user)
         } catch {
@@ -51,7 +51,7 @@ export default function CourseDetails() {
         }
       }
       if (token && (data.course.isOwner || data.course.isEnrolled)) {
-        await loadLessons(token)
+        await loadLessons()
       } else {
         setLessons([])
       }
@@ -62,9 +62,9 @@ export default function CourseDetails() {
     }
   }
 
-  const loadLessons = async (token) => {
+  const loadLessons = async () => {
     try {
-      const { data } = await CourseService.getLessons(token, id)
+      const { data } = await CourseService.getLessons(getToken, id)
       setLessons(data.lessons || [])
     } catch {
       setLessons([])
@@ -75,8 +75,7 @@ export default function CourseDetails() {
     setActionLoading(true)
     setJoinError('')
     try {
-      const token = await getToken()
-      await CourseService.join(token, id, code)
+      await CourseService.join(getToken, id, code)
       setShowJoinModal(false)
       await loadCourse()
     } catch (err) {
@@ -97,7 +96,6 @@ export default function CourseDetails() {
     setActionLoading(true)
     setError('')
     try {
-      const token = await getToken()
       let finalVideoUrl = lessonForm.videoUrl.trim()
 
       if (videoFile) {
@@ -113,7 +111,7 @@ export default function CourseDetails() {
         finalVideoUrl = json.secure_url
       }
 
-      await CourseService.addLesson(token, id, {
+      await CourseService.addLesson(getToken, id, {
         title: lessonForm.title.trim(),
         description: lessonForm.description.trim(),
         content: lessonForm.content.trim(),
@@ -122,7 +120,7 @@ export default function CourseDetails() {
       })
       setLessonForm({ title: '', description: '', content: '', videoUrl: '', order: '' })
       setVideoFile(null)
-      await loadLessons(token)
+      await loadLessons()
     } catch (err) {
       setError(err?.response?.data?.error || 'Failed to add lesson')
     } finally {
@@ -139,9 +137,8 @@ export default function CourseDetails() {
     const videoUrl = prompt('Video URL (optional)', lesson.videoUrl)
     const order = Number(prompt('Order number', lesson.order || 1))
     try {
-      const token = await getToken()
-      await CourseService.updateLesson(token, lesson._id, { title, description, content, videoUrl, order })
-      await loadLessons(token)
+      await CourseService.updateLesson(getToken, lesson._id, { title, description, content, videoUrl, order })
+      await loadLessons()
     } catch (err) {
       setError(err?.response?.data?.error || 'Failed to update lesson')
     }
@@ -150,9 +147,8 @@ export default function CourseDetails() {
   const deleteLesson = async (lessonId) => {
     if (!window.confirm('Delete this lesson?')) return
     try {
-      const token = await getToken()
-      await CourseService.deleteLesson(token, lessonId)
-      await loadLessons(token)
+      await CourseService.deleteLesson(getToken, lessonId)
+      await loadLessons()
     } catch (err) {
       setError(err?.response?.data?.error || 'Failed to delete lesson')
     }
@@ -162,7 +158,6 @@ export default function CourseDetails() {
     setActionLoading(true)
     setError('')
     try {
-      const token = await getToken()
       const payload = {
         title: editForm.title.trim(),
         description: editForm.description.trim(),
@@ -170,7 +165,7 @@ export default function CourseDetails() {
         joinType: editForm.joinType,
         ...(editForm.joinType === 'code' ? { joinCode: editForm.joinCode.trim() } : {}),
       }
-      const { data } = await CourseService.update(token, id, payload)
+      const { data } = await CourseService.update(getToken, id, payload)
       setCourse(data.course)
       setEditMode(false)
     } catch (err) {
@@ -184,8 +179,7 @@ export default function CourseDetails() {
     if (!window.confirm('Delete this course and its lessons?')) return
     setActionLoading(true)
     try {
-      const token = await getToken()
-      await CourseService.remove(token, id)
+      await CourseService.remove(getToken, id)
       navigate('/courses')
     } catch (err) {
       setError(err?.response?.data?.error || 'Failed to delete course')

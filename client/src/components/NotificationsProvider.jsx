@@ -91,10 +91,7 @@ export default function NotificationsProvider({ children }) {
      --------------------------------------- */
   const fetchNew = async () => {
     try {
-      const token = await getToken()
-      if (!token) return
-
-      const http = authedApi(token)
+      const http = await authedApi(getToken)
       const { data } = await http.get('/notifications', {
         params: { limit: 20 },
       })

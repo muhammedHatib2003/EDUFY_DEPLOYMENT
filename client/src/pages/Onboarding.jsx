@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth, useUser } from '@clerk/clerk-react'
 import { useNavigate } from 'react-router-dom'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 
 export default function Onboarding() {
   const { getToken } = useAuth()

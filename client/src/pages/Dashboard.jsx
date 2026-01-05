@@ -54,7 +54,7 @@ export default function Dashboard() {
     setLoading(true)
     setError('')
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       const [meRes, classRes, scheduleRes] = await Promise.all([
         http.get('/users/me'),
         http.get('/classrooms'),
@@ -78,7 +78,7 @@ export default function Dashboard() {
 
   const fetchScheduleOnly = async () => {
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       const { data } = await http.get('/schedule')
       setItems(Array.isArray(data.items) ? data.items : [])
     } catch (e) {
@@ -95,7 +95,7 @@ export default function Dashboard() {
     setSaving(true)
     setError('')
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       await http.post('/schedule', {
         classId: form.classId,
         title: form.title.trim(),

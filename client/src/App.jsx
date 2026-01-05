@@ -33,7 +33,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Todos from './pages/Todos.jsx'
 import GeminiChat from './pages/GeminiChat.jsx'
 
-import { authedApi } from './lib/api.js'
+import { authedApi } from '@/lib/api'
 
 /* =========================================================
    CLERK DEEP LINK HANDLER (ANDROID / IOS)

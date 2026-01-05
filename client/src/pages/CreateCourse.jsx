@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { useNavigate } from 'react-router-dom'
 import { CourseService } from '../services/courses'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 
 export default function CreateCourse() {
   const { getToken } = useAuth()
@@ -49,7 +49,7 @@ export default function CreateCourse() {
         joinType: form.joinType,
         ...(form.joinType === 'code' ? { joinCode: form.joinCode.trim() } : {}),
       }
-      const { data } = await CourseService.create(token, payload)
+      const { data } = await CourseService.create(getToken, payload)
       navigate(`/courses/${data.course._id}`)
     } catch (err) {
       setError(err?.response?.data?.error ? `${err.response.data.error}${err.response.data.details ? ': ' + JSON.stringify(err.response.data.details) : ''}` : 'Failed to create course')

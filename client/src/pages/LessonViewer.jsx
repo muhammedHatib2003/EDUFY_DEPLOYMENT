@@ -19,10 +19,9 @@ export default function LessonViewer() {
       setLoading(true)
       setError('')
       try {
-        const token = await getToken()
         const [courseRes, lessonsRes] = await Promise.all([
-          CourseService.getOne(token, id),
-          CourseService.getLessons(token, id),
+          CourseService.getOne(getToken, id),
+          CourseService.getLessons(getToken, id),
         ])
         setCourse(courseRes.data.course)
         const list = lessonsRes.data.lessons || []

@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { authedApi } from '../lib/api.js'
-import * as VideoSDK from '@stream-io/video-react-sdk'
+import {
+  StreamVideo,
+  StreamVideoClient,
+  StreamCall,
+  StreamTheme,
+  SpeakerLayout,
+  CallControls,
+} from '@stream-io/video-react-sdk'
 import '@stream-io/video-react-sdk/dist/css/styles.css'
 import { AiService } from '../services/ai'
 import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
 
 const SUMMARY_STORAGE_KEY = 'graedufy_voice_summaries'
+const WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/call/'
 
 function saveSummaryLocally(entry) {
   if (typeof window === 'undefined') return
@@ -29,8 +37,6 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const [adding, setAdding] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [selectedToAdd, setSelectedToAdd] = useState({})
-  const [isAudioMuted, setIsAudioMuted] = useState(false)
-  const [isVideoMuted, setIsVideoMuted] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState(null)
   const [summary, setSummary] = useState('')
@@ -38,12 +44,21 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const [summaryTopic, setSummaryTopic] = useState('')
   const [summaryError, setSummaryError] = useState('')
   const [processingSummary, setProcessingSummary] = useState(false)
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
   const recorderRef = useRef(null)
   const [audioDataUrl, setAudioDataUrl] = useState('')
   const [expanded, setExpanded] = useState(false)
   const callLabel = callNameProp || callIdProp || 'Active Call'
-  const canShareScreen = mode !== 'voice' && (!screenShareOnlyForTeacher || isTeacher)
+  const isElectron =
+    typeof navigator !== 'undefined' &&
+    (navigator.userAgent.toLowerCase().includes('electron') ||
+      (typeof window !== 'undefined' &&
+        (window?.desktop?.isElectron || window?.process?.type === 'renderer')))
+  const isCapacitor =
+    typeof window !== 'undefined' &&
+    !!window?.Capacitor?.isNativePlatform?.()
+  const shouldOpenExternally = isElectron || isCapacitor
+  const externalUrl = `${WEB_CALL_BASE}${encodeURIComponent(callIdProp || 'graedufy-demo')}`
+  const [externalOpened, setExternalOpened] = useState(false)
 
   const channelMemberIds = useMemo(() => {
     try {
@@ -67,13 +82,26 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   }, [friends, channelMemberIds, channel?.id])
 
   useEffect(() => {
+    if (shouldOpenExternally && !externalOpened) {
+      try {
+        window.open(externalUrl, '_blank', 'noopener,noreferrer')
+        setExternalOpened(true)
+        setError('Video calls open in browser for best performance.')
+      } catch (err) {
+        console.warn('Failed to open external call URL', err)
+      }
+    }
+  }, [shouldOpenExternally, externalOpened, externalUrl])
+
+  useEffect(() => {
+    if (shouldOpenExternally) return undefined
     let mounted = true
     const init = async () => {
       try {
-        const http = authedApi(await getToken())
+        const http = await authedApi(getToken)
         const { data } = await http.post('/stream/token/video')
 
-        const c = new VideoSDK.StreamVideoClient({
+        const c = new StreamVideoClient({
           apiKey: data.apiKey,
           user: { id: data.userId },
           token: data.token
@@ -107,53 +135,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
       mounted = false
       client?.disconnectUser?.()
     }
-  }, [])
-
-  // Custom control handlers
-  const toggleAudio = async () => {
-    try {
-      if (call) {
-        if (isAudioMuted) {
-          await call.microphone.enable()
-        } else {
-          await call.microphone.disable()
-        }
-        setIsAudioMuted(!isAudioMuted)
-      }
-    } catch (error) {
-      console.error('Failed to toggle audio:', error)
-    }
-  }
-
-  const toggleVideo = async () => {
-    try {
-      if (call && mode !== 'voice') {
-        if (isVideoMuted) {
-          await call.camera.enable()
-        } else {
-          await call.camera.disable()
-        }
-        setIsVideoMuted(!isVideoMuted)
-      }
-    } catch (error) {
-      console.error('Failed to toggle video:', error)
-    }
-  }
-
-  const toggleScreenShare = async () => {
-    if (!call || !canShareScreen) return
-    try {
-      const sharing = call.screenShare?.state?.status === 'enabled'
-      if (sharing) {
-        await call.screenShare.disable(true)
-      } else {
-        await call.screenShare.enable()
-      }
-    } catch (error) {
-      console.error('Failed to toggle screen share:', error)
-      setError('Unable to toggle screen share. Please check permissions and try again.')
-    }
-  }
+  }, [shouldOpenExternally])
 
   const stopRecordingTracks = () => {
     const rec = recorderRef.current
@@ -224,8 +206,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     setProcessingSummary(true)
     setSummaryError('')
     try {
-      const token = await getToken()
-      const { data } = await AiService.voiceSummary(token, {
+      const { data } = await AiService.voiceSummary(getToken, {
         dataUrl: audioDataUrl,
         topic: summaryTopic,
       })
@@ -253,17 +234,6 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     return () => stopRecordingTracks()
   }, [])
 
-  useEffect(() => {
-    if (!call?.screenShare?.state) return
-    setIsScreenSharing(call.screenShare.state.status === 'enabled')
-    const sub = call.screenShare.state.status$?.subscribe((status) => {
-      setIsScreenSharing(status === 'enabled')
-    })
-    return () => {
-      try { sub?.unsubscribe?.() } catch {}
-    }
-  }, [call])
-
   return (
     <div className="fixed inset-0 z-[9999] bg-black text-white">
       <div className="relative w-full h-full flex flex-col">
@@ -285,86 +255,63 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
         )}
 
         <div className="flex-1 relative overflow-hidden pt-14 pb-28 sm:pb-32">
-          {client && call ? (
-            <VideoSDK.StreamVideo client={client}>
-              <VideoSDK.StreamCall call={call}>
-                <div className="absolute inset-0 bg-gray-900">
-                  {/* Floating Header */}
-                  <div className="absolute top-0 left-0 right-0 z-20 px-3 py-2 flex items-center justify-between bg-black/70 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                      <div className="leading-tight">
-                        <div className="text-sm font-semibold">{mode === 'voice' ? 'Voice Call' : 'Video Call'}</div>
-                        <div className="text-xs text-white/60">{callLabel}</div>
+          {shouldOpenExternally ? (
+            <div className="h-full grid place-items-center bg-gray-900 px-4 text-center space-y-4">
+              <div className="text-xl font-semibold">Video calls open in browser for best performance.</div>
+              <div className="text-white/70">We’ve opened the call in your default browser.</div>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => window.open(externalUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  Open Call
+                </button>
+                <button className="btn" onClick={onClose}>
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : client && call ? (
+            <StreamVideo client={client}>
+              <StreamCall call={call}>
+                <StreamTheme>
+                  <div className="absolute inset-0 bg-gray-900">
+                    {/* Floating Header */}
+                    <div className="absolute top-0 left-0 right-0 z-20 px-3 py-2 flex items-center justify-between bg-black/70 border-b border-white/10">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                        <div className="leading-tight">
+                          <div className="text-sm font-semibold">{mode === 'voice' ? 'Voice Call' : 'Video Call'}</div>
+                          <div className="text-xs text-white/60">{callLabel}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setExpanded((s) => !s)}
+                          className="btn btn-ghost btn-xs text-white"
+                          title={expanded ? 'Collapse call window' : 'Expand call window'}
+                        >
+                          {expanded ? 'Compact' : 'Expand'}
+                        </button>
+                        <button
+                          onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
+                          className="btn btn-error btn-xs"
+                          title="End call"
+                        >
+                          End
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setExpanded((s) => !s)}
-                        className="btn btn-ghost btn-xs text-white"
-                        title={expanded ? 'Collapse call window' : 'Expand call window'}
-                      >
-                        {expanded ? 'Compact' : 'Expand'}
-                      </button>
-                      <button
-                        onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
-                        className="btn btn-error btn-xs"
-                        title="End call"
-                      >
-                        End
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* Call Content */}
-                  {VideoSDK.CallContent ? (
-                    <VideoSDK.CallContent />
-                  ) : (
-                    <div className="h-full flex flex-col relative">
-                      {VideoSDK.SpeakerLayout ? (
-                        <VideoSDK.SpeakerLayout />
-                      ) : (
-                        <div className="flex-1 grid place-items-center">
-                          <div className="text-center">
-                            <div className="loading loading-spinner loading-lg text-primary mb-4"></div>
-                            <div className="text-white/70">Connected to call...</div>
-                          </div>
-                        </div>
-                      )}
+                    <div className="h-full flex flex-col relative pt-12 pb-28 sm:pb-32">
+                      <div className="flex-1 relative">
+                        <SpeakerLayout />
+                      </div>
 
-
-                      {/* Bottom Controls */}
                       <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/80 border-t border-white/10 p-3 sm:p-4">
-                        <div className="max-w-4xl mx-auto space-y-2">
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            <button
-                              onClick={toggleAudio}
-                              className={`btn btn-sm ${isAudioMuted ? 'btn-error' : 'btn-ghost border border-white/20 text-white'}`}
-                              aria-pressed={isAudioMuted}
-                            >
-                              {isAudioMuted ? 'Unmute' : 'Mute'}
-                            </button>
-                            {mode !== 'voice' && (
-                              <button
-                                onClick={toggleVideo}
-                                className={`btn btn-sm ${isVideoMuted ? 'btn-error' : 'btn-ghost border border-white/20 text-white'}`}
-                                aria-pressed={isVideoMuted}
-                              >
-                                {isVideoMuted ? 'Camera Off' : 'Camera On'}
-                              </button>
-                            )}
-                            {canShareScreen && (
-                              <button
-                                onClick={toggleScreenShare}
-                                className={`btn btn-sm ${isScreenSharing ? 'btn-primary' : 'btn-ghost border border-white/20 text-white'}`}
-                                aria-pressed={isScreenSharing}
-                              >
-                                {isScreenSharing ? 'Stop Share' : 'Share Screen'}
-                              </button>
-                            )}
-                            <button className="btn btn-ghost btn-sm border border-white/20 text-white">
-                              Participants
-                            </button>
+                        <div className="max-w-4xl mx-auto space-y-3">
+                          <CallControls />
+                          <div className="flex flex-wrap items-center gap-2">
                             {channel && (
                               <button
                                 className="btn btn-outline btn-sm text-white border-white/30"
@@ -374,16 +321,6 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                                 Add People
                               </button>
                             )}
-                            <button
-                              onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
-                              className="btn btn-error btn-sm"
-                              title="End call"
-                            >
-                              End
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2">
                             <input
                               type="text"
                               className="input input-xs input-bordered bg-white/10 text-white placeholder:text-white/60 flex-1 min-w-[160px]"
@@ -407,7 +344,6 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                         </div>
                       </div>
 
-                      {/* Voice-only overlay */}
                       {mode === 'voice' && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="flex flex-col items-center gap-3 bg-black/50 px-4 py-3 rounded-xl">
@@ -456,10 +392,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              </VideoSDK.StreamCall>
-            </VideoSDK.StreamVideo>
+                  </div>
+                </StreamTheme>
+              </StreamCall>
+            </StreamVideo>
           ) : (
             <div className="h-full grid place-items-center bg-gray-900">
               <div className="text-center">

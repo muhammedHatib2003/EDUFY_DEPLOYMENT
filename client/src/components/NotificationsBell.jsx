@@ -20,7 +20,7 @@ export default function NotificationsBell() {
   const fetchNotifications = async () => {
     try {
       setLoading(true)
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       const { data } = await http.get('/notifications', { params: { limit: 20 } })
       setItems(Array.isArray(data.notifications) ? data.notifications : [])
     } catch (err) {
@@ -38,7 +38,7 @@ export default function NotificationsBell() {
 
   const markAllRead = async () => {
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       await http.post('/notifications/mark-read', {})
       setItems(prev =>
         prev.map(n => ({
@@ -62,7 +62,7 @@ export default function NotificationsBell() {
     )
 
     try {
-      const http = authedApi(await getToken())
+      const http = await authedApi(getToken)
       await http.post('/notifications/mark-read', { ids: [n._id] })
     } catch (err) {
       console.warn('Failed to mark read', err)

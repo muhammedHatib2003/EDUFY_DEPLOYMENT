@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { authedApi } from '../lib/api.js'
+import { authedApi } from '@/lib/api'
 import ClassroomCard from '../components/ClassroomCard.jsx'
 import { useNavigate } from 'react-router-dom'
 
