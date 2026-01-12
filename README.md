@@ -62,7 +62,7 @@ Notes
 - Feed posts live in MongoDB; the API supports real-time SSE updates, inline image/video attachments, likes, and threaded comments for you and the people you've friended.
  - AI Chat runs server-side and supports multiple providers. The client sends images as data URLs.
    - Gemini (default if `GEMINI_API_KEY` is set): set `GEMINI_API_KEY` and optional `GEMINI_MODEL` (default `gemini-1.5-flash`).
-   - OpenRouter: set `OPENROUTER_API_KEY` and optional `OPENROUTER_MODEL` (default `openai/gpt-4o-mini`).
+   - OpenRouter: set `OPENROUTER_API_KEY` and optional `OPENROUTER_MODEL` (default `qwen/qwen3-4b:free`).
    - OpenAI: set `OPENAI_API_KEY` and optional `OPENAI_MODEL` (default `gpt-4o-mini`). Optional `OPENAI_ORG_ID` and `OPENAI_BASE_URL`.
    - Azure OpenAI: set `OPENAI_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (recommended) and optional `AZURE_OPENAI_API_VERSION`.
    - Force provider: set `AI_PROVIDER=gemini|openrouter|openai|azure` (otherwise auto-detected by envs).
@@ -79,7 +79,7 @@ Environment variables
   - GEMINI_MODEL: optional; default gemini-1.5-flash
   - GEMINI_API_BASE / GEMINI_API_VERSION: optional
   - OPENROUTER_API_KEY: from OpenRouter
-  - OPENROUTER_MODEL: optional; default openai/gpt-4o-mini
+  - OPENROUTER_MODEL: optional; default qwen/qwen3-4b:free
   - OPENAI_API_KEY: from OpenAI dashboard (if using OpenAI)
   - OPENAI_BASE_URL: optional; override base URL or proxy
   - OPENAI_ORG_ID: optional

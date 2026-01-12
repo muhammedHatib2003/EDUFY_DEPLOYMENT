@@ -8,7 +8,7 @@ const geminiModelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
 const openRouter = process.env.OPENROUTER_API_KEY
   ? new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY })
   : null
-const openRouterModel = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+const openRouterModel = process.env.OPENROUTER_MODEL || 'qwen/qwen3-4b:free'
 
 function resolveProvider() {
   const forced = (process.env.AI_PROVIDER || '').trim().toLowerCase()
