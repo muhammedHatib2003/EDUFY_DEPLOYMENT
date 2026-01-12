@@ -1,9 +1,22 @@
 import express from 'express'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { OpenRouter } from '@openrouter/sdk'
 
 const router = express.Router()
-const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const gemini = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
+const geminiModelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const openRouter = process.env.OPENROUTER_API_KEY
+  ? new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY })
+  : null
+const openRouterModel = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+
+function resolveProvider() {
+  const forced = (process.env.AI_PROVIDER || '').trim().toLowerCase()
+  if (forced) return forced
+  if (gemini) return 'gemini'
+  if (openRouter) return 'openrouter'
+  return 'none'
+}
 
 function detectLang(text = '') {
   if (/[\u0600-\u06FF]/.test(text)) return 'Arabic'
@@ -18,7 +31,20 @@ function isSummaryRequest(text = '') {
 
 router.post('/chat', async (req, res) => {
   try {
-    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
+    const provider = resolveProvider()
+    if (provider !== 'openrouter' && provider !== 'gemini' && provider !== 'none') {
+      return res.status(500).json({ error: `Unsupported AI provider: ${provider}` })
+    }
+    if (provider === 'openrouter' && !openRouter) {
+      return res.status(500).json({ error: 'OPENROUTER_API_KEY not configured' })
+    }
+    if (provider === 'gemini' && !gemini) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
+    }
+    if (provider === 'none') {
+      return res.status(500).json({ error: 'No AI provider configured' })
+    }
+
     const { input, lessonBuffer = '', history = [] } = req.body || {}
     const userInput = typeof input === 'string' ? input.trim() : ''
     if (!userInput) return res.status(400).json({ error: 'input required' })
@@ -76,11 +102,6 @@ Language:
       userPrompt = `Transcript:\n${transcript}\n\nUser request:\n${userInput}`
     }
 
-    const model = gemini.getGenerativeModel({
-      model: modelName,
-      systemInstruction,
-    })
-
     const contentHistory = Array.isArray(history)
       ? history
           .slice(-20)
@@ -91,15 +112,42 @@ Language:
           }))
       : []
 
-    const response = await model.generateContent({
-      contents: [
-        ...contentHistory,
-        { role: 'user', parts: [{ text: userPrompt }] },
-      ],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 900 },
-    })
+    let reply = ''
+    if (provider === 'openrouter') {
+      const response = await openRouter.chat.send({
+        model: openRouterModel,
+        messages: [
+          { role: 'system', content: systemInstruction },
+          ...contentHistory.map((m) => ({ role: m.role, content: m.parts?.[0]?.text || '' })),
+          { role: 'user', content: userPrompt },
+        ],
+        stream: false,
+        temperature: 0.3,
+        maxTokens: 900,
+      })
 
-    const reply = response?.response?.text?.() || ''
+      const messageContent = response?.choices?.[0]?.message?.content
+      if (Array.isArray(messageContent)) {
+        reply = messageContent.map((item) => (item?.type === 'text' ? item.text : '')).join('')
+      } else if (typeof messageContent === 'string') {
+        reply = messageContent
+      }
+    } else {
+      const model = gemini.getGenerativeModel({
+        model: geminiModelName,
+        systemInstruction,
+      })
+
+      const response = await model.generateContent({
+        contents: [
+          ...contentHistory,
+          { role: 'user', parts: [{ text: userPrompt }] },
+        ],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 900 },
+      })
+
+      reply = response?.response?.text?.() || ''
+    }
     return res.json({ reply })
   } catch (e) {
     console.error('ai.routes chat error', e)

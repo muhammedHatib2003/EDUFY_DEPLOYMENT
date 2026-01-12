@@ -6,7 +6,7 @@ Overview
 - UI: Tailwind CSS with DaisyUI for multiple themes (light, dark, emerald)
 - Realtime chat + calls: Stream (chat, video/voice calls)
 - Community feed: Mongo-backed posts from you and your friends
-- AI Chat: AI assistant (text + image input) with provider support (Gemini, OpenAI/Azure)
+- AI Chat: AI assistant (text + image input) with provider support (Gemini, OpenRouter, OpenAI/Azure)
 
 Monorepo Layout
 - server: Express API (Clerk-protected), MongoDB via Mongoose
@@ -24,7 +24,7 @@ Requirements
 - MongoDB (local or Atlas)
 - Clerk account (publishable key + secret key)
 - Stream account (API key + secret) with Chat/Video enabled
-- An AI provider key (Gemini or OpenAI/Azure)
+- An AI provider key (Gemini, OpenRouter, or OpenAI/Azure)
 
 Setup
 1) Configure environment variables
@@ -62,9 +62,10 @@ Notes
 - Feed posts live in MongoDB; the API supports real-time SSE updates, inline image/video attachments, likes, and threaded comments for you and the people you've friended.
  - AI Chat runs server-side and supports multiple providers. The client sends images as data URLs.
    - Gemini (default if `GEMINI_API_KEY` is set): set `GEMINI_API_KEY` and optional `GEMINI_MODEL` (default `gemini-1.5-flash`).
+   - OpenRouter: set `OPENROUTER_API_KEY` and optional `OPENROUTER_MODEL` (default `openai/gpt-4o-mini`).
    - OpenAI: set `OPENAI_API_KEY` and optional `OPENAI_MODEL` (default `gpt-4o-mini`). Optional `OPENAI_ORG_ID` and `OPENAI_BASE_URL`.
    - Azure OpenAI: set `OPENAI_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (recommended) and optional `AZURE_OPENAI_API_VERSION`.
-   - Force provider: set `AI_PROVIDER=gemini|openai|azure` (otherwise auto-detected by envs).
+   - Force provider: set `AI_PROVIDER=gemini|openrouter|openai|azure` (otherwise auto-detected by envs).
 
 Environment variables
 - server/.env
@@ -73,10 +74,12 @@ Environment variables
   - CORS_ORIGIN: http://localhost:5173 (client URL)
   - CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY from Clerk dashboard
   - STREAM_API_KEY and STREAM_API_SECRET from Stream dashboard (chat + video)
-  - AI_PROVIDER: gemini | openai | azure (optional)
+  - AI_PROVIDER: gemini | openrouter | openai | azure (optional)
   - GEMINI_API_KEY: from Google AI Studio (Gemini)
   - GEMINI_MODEL: optional; default gemini-1.5-flash
   - GEMINI_API_BASE / GEMINI_API_VERSION: optional
+  - OPENROUTER_API_KEY: from OpenRouter
+  - OPENROUTER_MODEL: optional; default openai/gpt-4o-mini
   - OPENAI_API_KEY: from OpenAI dashboard (if using OpenAI)
   - OPENAI_BASE_URL: optional; override base URL or proxy
   - OPENAI_ORG_ID: optional
