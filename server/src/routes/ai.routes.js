@@ -29,6 +29,39 @@ function isSummaryRequest(text = '') {
   )
 }
 
+function parseBase64DataUrl(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null
+  const match = /^data:([^;]+);base64,([\s\S]+)$/i.exec(dataUrl.trim())
+  if (!match) return null
+  return { mimeType: match[1], base64: match[2] }
+}
+
+function approxBytesFromBase64(base64 = '') {
+  // Rough conversion: base64 length * 3/4 (ignoring padding/newlines)
+  const cleaned = String(base64).replace(/\s+/g, '')
+  return Math.ceil((cleaned.length * 3) / 4)
+}
+
+function tryParseJsonObject(text = '') {
+  const raw = String(text || '').trim()
+  const unwrapped = raw
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  const start = unwrapped.indexOf('{')
+  const end = unwrapped.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  const candidate = unwrapped.slice(start, end + 1)
+  try {
+    const parsed = JSON.parse(candidate)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 router.post('/chat', async (req, res) => {
   try {
     const provider = resolveProvider()
@@ -152,6 +185,77 @@ Language:
   } catch (e) {
     console.error('ai.routes chat error', e)
     res.status(500).json({ error: 'AI failed' })
+  }
+})
+
+// Audio -> transcript + summary (Gemini only)
+router.post('/voice-summary', async (req, res) => {
+  try {
+    const provider = resolveProvider()
+    if (provider === 'none') return res.status(500).json({ error: 'No AI provider configured' })
+    if (provider !== 'gemini') {
+      return res.status(400).json({
+        error: 'Voice summary currently requires Gemini. Set GEMINI_API_KEY (and optionally AI_PROVIDER=gemini).',
+      })
+    }
+    if (!gemini) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
+
+    const { dataUrl, topic = '' } = req.body || {}
+    const parsed = parseBase64DataUrl(dataUrl)
+    if (!parsed) return res.status(400).json({ error: 'dataUrl must be a base64 data URL (data:audio/...;base64,...)' })
+    if (!String(parsed.mimeType || '').toLowerCase().startsWith('audio/')) {
+      return res.status(400).json({ error: `Unsupported mimeType: ${parsed.mimeType}` })
+    }
+
+    const bytes = approxBytesFromBase64(parsed.base64)
+    if (bytes > 12 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Audio is too large (max ~12MB). Record a shorter clip.' })
+    }
+
+    const audioModelName = process.env.GEMINI_AUDIO_MODEL || geminiModelName
+
+    const systemInstruction =
+      `You transcribe and summarize audio for students.\n` +
+      `Return ONLY valid JSON with exactly these keys:\n` +
+      `{"transcript":"...","summary":"..."}\n` +
+      `Rules:\n` +
+      `- transcript: the verbatim transcript in the original language.\n` +
+      `- summary: concise student-friendly summary in the same language.\n` +
+      `- Do not add extra keys or markdown.\n`
+
+    const prompt =
+      `Task:\n` +
+      `1) Transcribe the audio.\n` +
+      `2) Summarize it.\n` +
+      (topic ? `Topic hint: ${String(topic).slice(0, 200)}\n` : '')
+
+    const model = gemini.getGenerativeModel({
+      model: audioModelName,
+      systemInstruction,
+    })
+
+    const response = await model.generateContent({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: parsed.mimeType, data: parsed.base64 } },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 900 },
+    })
+
+    const text = response?.response?.text?.() || ''
+    const obj = tryParseJsonObject(text) || {}
+    const transcript = typeof obj.transcript === 'string' ? obj.transcript : ''
+    const summary = typeof obj.summary === 'string' ? obj.summary : (text || '')
+
+    return res.json({ transcript, summary })
+  } catch (e) {
+    console.error('ai.routes voice-summary error', e)
+    return res.status(500).json({ error: 'Voice summary failed' })
   }
 })
 

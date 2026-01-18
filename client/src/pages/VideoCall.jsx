@@ -7,7 +7,9 @@ import {
   StreamCall,
   StreamTheme,
   SpeakerLayout,
-  CallControls,
+  ScreenShareButton,
+  ToggleAudioPublishingButton,
+  ToggleVideoPublishingButton,
 } from '@stream-io/video-react-sdk'
 import '@stream-io/video-react-sdk/dist/css/styles.css'
 import { AiService } from '../services/ai'
@@ -34,6 +36,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const [client, setClient] = useState(null)
   const [call, setCall] = useState(null)
   const [error, setError] = useState('')
+  const [leaving, setLeaving] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [selectedToAdd, setSelectedToAdd] = useState({})
@@ -45,6 +48,8 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const [summaryError, setSummaryError] = useState('')
   const [processingSummary, setProcessingSummary] = useState(false)
   const recorderRef = useRef(null)
+  const leavingRef = useRef(false)
+  const hasLeftRef = useRef(false)
   const [audioDataUrl, setAudioDataUrl] = useState('')
   const [expanded, setExpanded] = useState(false)
   const callLabel = callNameProp || callIdProp || 'Active Call'
@@ -143,6 +148,29 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
       rec.stream.getTracks().forEach((t) => t.stop())
     }
     recorderRef.current = null
+  }
+
+  const safeLeave = async () => {
+    if (!call) return
+    if (hasLeftRef.current) return
+    if (leavingRef.current) return
+
+    leavingRef.current = true
+    setLeaving(true)
+    try {
+      await call.leave()
+      hasLeftRef.current = true
+    } catch (err) {
+      const message = String(err?.message || err || '')
+      if (/already been left/i.test(message)) {
+        hasLeftRef.current = true
+      } else {
+        console.error('call.leave failed', err)
+      }
+    } finally {
+      leavingRef.current = false
+      setLeaving(false)
+    }
   }
 
   const startRecording = async () => {
@@ -294,9 +322,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                           {expanded ? 'Compact' : 'Expand'}
                         </button>
                         <button
-                          onClick={async () => { try { await call?.leave?.() } catch {} onClose() }}
+                          onClick={async () => { await safeLeave(); onClose() }}
                           className="btn btn-error btn-xs"
                           title="End call"
+                          disabled={leaving}
                         >
                           End
                         </button>
@@ -310,7 +339,19 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
 
                       <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/80 border-t border-white/10 p-3 sm:p-4">
                         <div className="max-w-4xl mx-auto space-y-3">
-                          <CallControls />
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <ToggleAudioPublishingButton />
+                            {mode !== 'voice' && <ToggleVideoPublishingButton />}
+                            {(!screenShareOnlyForTeacher || isTeacher) && <ScreenShareButton />}
+                            <button
+                              className="btn btn-error btn-sm"
+                              disabled={leaving}
+                              onClick={async () => { await safeLeave(); onClose() }}
+                              title="End call"
+                            >
+                              End
+                            </button>
+                          </div>
                           <div className="flex flex-wrap items-center gap-2">
                             {channel && (
                               <button

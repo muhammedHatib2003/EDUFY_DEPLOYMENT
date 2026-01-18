@@ -20,6 +20,7 @@ export default function ClassroomView() {
   const [posts, setPosts] = useState([])
   const [postText, setPostText] = useState('')
   const [postMedia, setPostMedia] = useState([])
+  const [postMediaPreviews, setPostMediaPreviews] = useState([])
   const [posting, setPosting] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState({})
   const [commentsByPost, setCommentsByPost] = useState({})
@@ -77,6 +78,7 @@ export default function ClassroomView() {
       })
       await ch.create().catch(() => {})
       await ch.addMembers([tok.userId]).catch(() => {})
+      await ch.watch().catch(() => {})
       setChatClient(chat)
       setChannel(ch)
     } catch (e) { 
@@ -183,6 +185,7 @@ export default function ClassroomView() {
       })
       setPostText('')
       setPostMedia([])
+      setPostMediaPreviews([])
       const res = await http.get(`/classrooms/${id}/posts`)
       setPosts(res.data.posts || [])
     } catch (e) { 
@@ -439,7 +442,7 @@ export default function ClassroomView() {
                         <div key={index} className="relative">
                           {file.type.startsWith('image') ? (
                             <img 
-                              src={URL.createObjectURL(file)} 
+                              src={postMediaPreviews[index] || ''} 
                               alt="Preview" 
                               className="w-16 h-16 object-cover rounded-lg"
                             />
@@ -452,7 +455,10 @@ export default function ClassroomView() {
                           )}
                           <button 
                             className="absolute -top-1 -right-1 btn btn-xs btn-circle btn-error"
-                            onClick={() => setPostMedia(prev => prev.filter((_, i) => i !== index))}
+                            onClick={() => {
+                              setPostMedia(prev => prev.filter((_, i) => i !== index))
+                              setPostMediaPreviews(prev => prev.filter((_, i) => i !== index))
+                            }}
                           >
                             Ã—
                           </button>
@@ -473,7 +479,22 @@ export default function ClassroomView() {
                       className="hidden" 
                       accept="image/*,video/*" 
                       multiple 
-                      onChange={(e) => setPostMedia(Array.from(e.target.files || []))} 
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || [])
+                        setPostMedia(files)
+                        try {
+                          const previews = await Promise.all(
+                            files.map(async (file) => {
+                              if (!file?.type?.startsWith('image')) return ''
+                              const result = await fileToDataUrl(file)
+                              return typeof result === 'string' ? result : ''
+                            })
+                          )
+                          setPostMediaPreviews(previews)
+                        } catch {
+                          setPostMediaPreviews([])
+                        }
+                      }} 
                     />
                   </label>
                   
