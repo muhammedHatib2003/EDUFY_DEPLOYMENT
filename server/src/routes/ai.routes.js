@@ -84,13 +84,42 @@ function tryParseJsonObject(text = '') {
 }
 
 function isOpenRouterRetryableError(err) {
-  const status = err?.status || err?.response?.status
-  const message = String(err?.message || err?.response?.data?.error || '').toLowerCase()
+  const safeJson = (value) => {
+    if (!value) return null
+    if (typeof value === 'object') return value
+    if (typeof value !== 'string') return null
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+
+  const bodyJson = safeJson(err?.body)
+  const responseDataJson = safeJson(err?.response?.data)
+
+  const status =
+    err?.status ||
+    err?.statusCode ||
+    err?.response?.status ||
+    err?.response?.statusCode ||
+    bodyJson?.error?.code ||
+    responseDataJson?.error?.code
+
+  const message = String(
+    err?.message ||
+      responseDataJson?.error?.message ||
+      bodyJson?.error?.message ||
+      err?.response?.data?.error ||
+      ''
+  ).toLowerCase()
+
   if ([402, 408, 409, 429, 500, 502, 503, 504].includes(Number(status))) return true
   if (message.includes('rate limit')) return true
   if (message.includes('quota')) return true
   if (message.includes('too many request')) return true
   if (message.includes('overloaded')) return true
+  if (message.includes('temporarily rate-limited')) return true
   return false
 }
 
@@ -110,7 +139,7 @@ async function openRouterChatWithFallback({ messages, temperature = 0.3, maxToke
     } catch (err) {
       lastError = err
       if (!isOpenRouterRetryableError(err)) break
-      console.warn('[openrouter] model failed, trying fallback:', model, err?.message || err)
+      console.warn('[openrouter] model failed, trying fallback:', model, err?.status || err?.statusCode || err?.message || err)
     }
   }
 
