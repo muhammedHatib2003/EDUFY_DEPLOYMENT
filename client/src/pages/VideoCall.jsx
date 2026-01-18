@@ -15,7 +15,8 @@ import '@stream-io/video-react-sdk/dist/css/styles.css'
 import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
 
 const SUMMARY_STORAGE_KEY = 'graedufy_voice_summaries'
-const WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/call/'
+// HashRouter-safe external URL (path-based URLs 404 on Vercel without rewrites).
+const WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/#/call/'
 
 // Web Speech API: only rely on Chrome / Edge for production usage.
 function isChromeOrEdge() {
@@ -101,7 +102,14 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     typeof window !== 'undefined' &&
     !!window?.Capacitor?.isNativePlatform?.()
   const shouldOpenExternally = isElectron || isCapacitor
-  const externalUrl = `${WEB_CALL_BASE}${encodeURIComponent(callIdProp || 'graedufy-demo')}`
+  const externalUrl = useMemo(() => {
+    const callId = encodeURIComponent(callIdProp || 'graedufy-demo')
+    const sp = new URLSearchParams()
+    if (mode) sp.set('mode', mode)
+    if (callNameProp) sp.set('name', callNameProp)
+    const qs = sp.toString()
+    return `${WEB_CALL_BASE}${callId}${qs ? `?${qs}` : ''}`
+  }, [callIdProp, callNameProp, mode])
   const [externalOpened, setExternalOpened] = useState(false)
 
   // Call is considered active once StreamCall is created/joined.

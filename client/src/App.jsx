@@ -28,6 +28,7 @@ import Courses from './pages/Courses.jsx'
 import CreateCourse from './pages/CreateCourse.jsx'
 import CourseDetails from './pages/CourseDetails.jsx'
 import LessonViewer from './pages/LessonViewer.jsx'
+import CallPage from './pages/CallPage.jsx'
 import Summaries from './pages/Summaries.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Todos from './pages/Todos.jsx'
@@ -149,6 +150,7 @@ function AuthedLayout() {
               <Route path="/courses/create" element={<CreateCourse />} />
               <Route path="/courses/:id" element={<CourseDetails />} />
               <Route path="/courses/:id/learn" element={<LessonViewer />} />
+              <Route path="/call/:id" element={<CallPage />} />
               <Route path="/summaries" element={<Summaries />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
