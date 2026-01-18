@@ -51,6 +51,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const leavingRef = useRef(false)
   const hasLeftRef = useRef(false)
   const [audioDataUrl, setAudioDataUrl] = useState('')
+  const speechRecRef = useRef(null)
+  const speechTranscriptRef = useRef('')
+  const [speechSupported, setSpeechSupported] = useState(false)
+  const [speechLiveText, setSpeechLiveText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const callLabel = callNameProp || callIdProp || 'Active Call'
   const isElectron =
@@ -150,6 +154,23 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     recorderRef.current = null
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const supported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+    setSpeechSupported(supported)
+  }, [])
+
+  const stopSpeechRecognition = () => {
+    const sr = speechRecRef.current
+    if (sr) {
+      try { sr.onresult = null } catch {}
+      try { sr.onerror = null } catch {}
+      try { sr.onend = null } catch {}
+      try { sr.stop?.() } catch {}
+    }
+    speechRecRef.current = null
+  }
+
   const safeLeave = async () => {
     if (!call) return
     if (hasLeftRef.current) return
@@ -177,9 +198,53 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     setSummaryError('')
     setSummary('')
     setTranscript('')
+    setSpeechLiveText('')
     setAudioBlob(null)
     setAudioDataUrl('')
+    speechTranscriptRef.current = ''
     try {
+      stopSpeechRecognition()
+      if (typeof window !== 'undefined') {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+        if (SpeechRecognition) {
+          const sr = new SpeechRecognition()
+          sr.continuous = true
+          sr.interimResults = true
+          // Best-effort language selection (default to Turkish)
+          const navLang = (navigator?.language || 'tr-TR').toLowerCase()
+          sr.lang = navLang.startsWith('tr') ? 'tr-TR' : (navigator?.language || 'tr-TR')
+
+          sr.onresult = (event) => {
+            try {
+              let interim = ''
+              for (let i = event.resultIndex; i < event.results.length; i++) {
+                const chunk = event.results[i]?.[0]?.transcript || ''
+                if (event.results[i].isFinal) {
+                  speechTranscriptRef.current = `${speechTranscriptRef.current}${chunk}`
+                } else {
+                  interim += chunk
+                }
+              }
+              const combined = `${speechTranscriptRef.current} ${interim}`.trim()
+              setSpeechLiveText(combined)
+              // keep transcript field synced with the best known text
+              if (speechTranscriptRef.current.trim()) {
+                setTranscript(speechTranscriptRef.current.trim())
+              }
+            } catch {}
+          }
+          sr.onerror = () => {
+            // ignore; speech might be blocked by permissions or unsupported in this context
+          }
+          sr.onend = () => {
+            // no-op; we stop it explicitly
+          }
+
+          try { sr.start() } catch {}
+          speechRecRef.current = sr
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 }
       const recorder = new MediaRecorder(stream, options)
@@ -202,6 +267,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
           }
         }
         reader.readAsDataURL(blob)
+        stopSpeechRecognition()
+        if (speechTranscriptRef.current.trim()) {
+          setTranscript(speechTranscriptRef.current.trim())
+        }
         stopRecordingTracks()
         setIsRecording(false)
       }
@@ -219,34 +288,65 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     if (recorder && recorder.state !== 'inactive') {
       recorder.stop()
     }
+    stopSpeechRecognition()
   }
 
   const summarizeAudio = async () => {
-    if (!audioBlob || !audioDataUrl) {
-      setSummaryError('Record audio first.')
-      return
-    }
-    const approxBytes = Math.ceil((audioDataUrl.length * 3) / 4)
-    if (approxBytes > 12 * 1024 * 1024) {
-      setSummaryError('Recording is too large. Please record a shorter clip (under ~12MB).')
-      return
-    }
     setProcessingSummary(true)
     setSummaryError('')
     try {
-      const { data } = await AiService.voiceSummary(getToken, {
-        dataUrl: audioDataUrl,
-        topic: summaryTopic,
-      })
-      setTranscript(data.transcript || '')
-      setSummary(data.summary || '')
+      const transcriptText = (speechTranscriptRef.current || transcript || speechLiveText || '').trim()
+      let finalTranscript = ''
+      let finalSummary = ''
+
+      // Prefer free-ish path: browser speech-to-text + /ai/chat summarization (OpenRouter fallbacks supported).
+      if (transcriptText.length >= 20) {
+        const http = await authedApi(getToken)
+        const topicHint = summaryTopic ? `Topic hint: ${summaryTopic}\n` : ''
+        const prompt =
+          `Aşağıdaki konuşma dökümünü kısa ve anlaşılır şekilde özetle.\n` +
+          `Başlık kullanma, sadece özet ver.\n` +
+          `${topicHint}` +
+          `\nTranscript:\n${transcriptText}\n`
+
+        const requestInput =
+          `Summarize the following transcript in a concise, student-friendly way.\n` +
+          `No headings; return only the summary.\n` +
+          `Reply in the same language as the transcript.\n` +
+          `${topicHint}` +
+          `\nTranscript:\n${transcriptText}\n`
+        const { data } = await http.post('/ai/chat', { input: requestInput })
+        finalTranscript = transcriptText
+        finalSummary = data?.reply || ''
+      } else {
+        // Fallback: send audio to server (requires GEMINI_API_KEY on the server)
+        if (!audioBlob || !audioDataUrl) {
+          setSummaryError('Record audio (or enable browser speech-to-text) first.')
+          return
+        }
+        const approxBytes = Math.ceil((audioDataUrl.length * 3) / 4)
+        if (approxBytes > 12 * 1024 * 1024) {
+          setSummaryError('Recording is too large. Please record a shorter clip (under ~12MB).')
+          return
+        }
+        const { data } = await AiService.voiceSummary(getToken, {
+          dataUrl: audioDataUrl,
+          topic: summaryTopic,
+        })
+        finalTranscript = data.transcript || ''
+        finalSummary = data.summary || ''
+      }
+
+      setTranscript(finalTranscript)
+      setSummary(finalSummary)
+
       const entry = {
         id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
         callId: callIdProp || 'graedufy-demo',
         callName: callLabel,
         topic: summaryTopic,
-        summary: data.summary || '',
-        transcript: data.transcript || '',
+        summary: finalSummary || '',
+        transcript: finalTranscript || '',
         createdAt: Date.now(),
       }
       saveSummaryLocally(entry)
@@ -259,7 +359,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   }
 
   useEffect(() => {
-    return () => stopRecordingTracks()
+    return () => {
+      stopSpeechRecognition()
+      stopRecordingTracks()
+    }
   }, [])
 
   return (

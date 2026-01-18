@@ -41,11 +41,14 @@ function resolveProvider() {
 
 function detectLang(text = '') {
   if (/[\u0600-\u06FF]/.test(text)) return 'Arabic'
+  // Heuristic for Turkish (helps the model respond in Turkish more reliably)
+  if (/[ğüşöçıİĞÜŞÖÇ]/.test(text)) return 'Turkish'
+  if (/\b(özetle|ozetle|özet|ozet|lütfen|lutfen|merhaba|ders|sınıf|sinif)\b/iu.test(text)) return 'Turkish'
   return 'English'
 }
 
 function isSummaryRequest(text = '') {
-  return /summarize this lesson|summarize the lecture|summarize this class|make a lesson summary|summarize/iu.test(
+  return /summarize this lesson|summarize the lecture|summarize this class|make a lesson summary|summarize|özetle|ozetle|özet|ozet/iu.test(
     text
   )
 }
@@ -201,7 +204,7 @@ WHEN IN LESSON SUMMARY MODE:
 - Keep it concise and readable.
 
 Language:
-- Always reply in the user's language.
+- Reply in ${lang}.
 `
 
     let systemInstruction = baseRules
@@ -273,14 +276,13 @@ Language:
 // Audio -> transcript + summary (Gemini only)
 router.post('/voice-summary', async (req, res) => {
   try {
-    const provider = resolveProvider()
-    if (provider === 'none') return res.status(500).json({ error: 'No AI provider configured' })
-    if (provider !== 'gemini') {
+    // Voice summaries require Gemini regardless of the chat provider selection.
+    // (You can keep AI_PROVIDER=openrouter for /chat while enabling Gemini just for this endpoint.)
+    if (!gemini) {
       return res.status(400).json({
-        error: 'Voice summary currently requires Gemini. Set GEMINI_API_KEY (and optionally AI_PROVIDER=gemini).',
+        error: 'Voice summary requires Gemini. Set GEMINI_API_KEY on the server.',
       })
     }
-    if (!gemini) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' })
 
     const { dataUrl, topic = '' } = req.body || {}
     const parsed = parseBase64DataUrl(dataUrl)
