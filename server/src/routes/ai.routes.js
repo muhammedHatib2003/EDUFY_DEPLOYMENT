@@ -8,7 +8,28 @@ const geminiModelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
 const openRouter = process.env.OPENROUTER_API_KEY
   ? new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY })
   : null
-const openRouterModel = process.env.OPENROUTER_MODEL || 'qwen/qwen3-4b:free'
+
+function parseModelList(value) {
+  if (!value || typeof value !== 'string') return []
+  return value
+    .split(/[,\n]/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+const defaultOpenRouterModels = [
+  'qwen/qwen3-4b:free',
+  'tngtech/deepseek-r1t2-chimera:free',
+  'google/gemma-3-4b-it:free',
+  'xiaomi/mimo-v2-flash:free',
+]
+
+const openRouterModels = (() => {
+  const fromModels = parseModelList(process.env.OPENROUTER_MODELS)
+  const fromModel = parseModelList(process.env.OPENROUTER_MODEL)
+  const merged = [...fromModels, ...fromModel, ...defaultOpenRouterModels]
+  return [...new Set(merged)]
+})()
 
 function resolveProvider() {
   const forced = (process.env.AI_PROVIDER || '').trim().toLowerCase()
@@ -60,6 +81,40 @@ function tryParseJsonObject(text = '') {
   } catch {
     return null
   }
+}
+
+function isOpenRouterRetryableError(err) {
+  const status = err?.status || err?.response?.status
+  const message = String(err?.message || err?.response?.data?.error || '').toLowerCase()
+  if ([402, 408, 409, 429, 500, 502, 503, 504].includes(Number(status))) return true
+  if (message.includes('rate limit')) return true
+  if (message.includes('quota')) return true
+  if (message.includes('too many request')) return true
+  if (message.includes('overloaded')) return true
+  return false
+}
+
+async function openRouterChatWithFallback({ messages, temperature = 0.3, maxTokens = 900 }) {
+  if (!openRouter) throw new Error('OPENROUTER_API_KEY not configured')
+
+  let lastError = null
+  for (const model of openRouterModels) {
+    try {
+      return await openRouter.chat.send({
+        model,
+        messages,
+        stream: false,
+        temperature,
+        maxTokens,
+      })
+    } catch (err) {
+      lastError = err
+      if (!isOpenRouterRetryableError(err)) break
+      console.warn('[openrouter] model failed, trying fallback:', model, err?.message || err)
+    }
+  }
+
+  throw lastError || new Error('OpenRouter request failed')
 }
 
 router.post('/chat', async (req, res) => {
@@ -147,14 +202,12 @@ Language:
 
     let reply = ''
     if (provider === 'openrouter') {
-      const response = await openRouter.chat.send({
-        model: openRouterModel,
+      const response = await openRouterChatWithFallback({
         messages: [
           { role: 'system', content: systemInstruction },
           ...contentHistory.map((m) => ({ role: m.role, content: m.parts?.[0]?.text || '' })),
           { role: 'user', content: userPrompt },
         ],
-        stream: false,
         temperature: 0.3,
         maxTokens: 900,
       })
