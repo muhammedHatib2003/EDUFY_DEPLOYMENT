@@ -40,16 +40,22 @@ function resolveProvider() {
 }
 
 function detectLang(text = '') {
-  if (/[\u0600-\u06FF]/.test(text)) return 'Arabic'
-  // Heuristic for Turkish (helps the model respond in Turkish more reliably)
-  if (/[ğüşöçıİĞÜŞÖÇ]/.test(text)) return 'Turkish'
-  if (/\b(özetle|ozetle|özet|ozet|lütfen|lutfen|merhaba|ders|sınıf|sinif)\b/iu.test(text)) return 'Turkish'
+  const t = String(text || '')
+  if (/[\u0600-\u06FF]/.test(t)) return 'Arabic'
+
+  // Heuristic for Turkish (helps the model respond in Turkish more reliably).
+  // Covers both proper Turkish characters and ASCII-only transliterations.
+  if (/[ğüşöçıİĞÜŞÖÇ]/.test(t)) return 'Turkish'
+  if (/\b(özetle|ozetle|özet|ozet|lütfen|lutfen|merhaba|ders|sınıf|sinif|öğrenci|ogrenci|hocam)\b/iu.test(t)) {
+    return 'Turkish'
+  }
+
   return 'English'
 }
 
 function isSummaryRequest(text = '') {
-  return /summarize this lesson|summarize the lecture|summarize this class|make a lesson summary|summarize|özetle|ozetle|özet|ozet/iu.test(
-    text
+  return /\b(summarize this lesson|summarize the lecture|summarize this class|make a lesson summary|summarize|summary|özetle|ozetle|özet|ozet)\b/iu.test(
+    String(text || '')
   )
 }
 
@@ -126,11 +132,12 @@ function isOpenRouterRetryableError(err) {
   return false
 }
 
-async function openRouterChatWithFallback({ messages, temperature = 0.3, maxTokens = 900 }) {
+async function openRouterChatWithFallback({ messages, temperature = 0.3, maxTokens = 900, models }) {
   if (!openRouter) throw new Error('OPENROUTER_API_KEY not configured')
 
   let lastError = null
-  for (const model of openRouterModels) {
+  const modelsToTry = Array.isArray(models) && models.length ? models : openRouterModels
+  for (const model of modelsToTry) {
     try {
       return await openRouter.chat.send({
         model,
@@ -147,6 +154,12 @@ async function openRouterChatWithFallback({ messages, temperature = 0.3, maxToke
   }
 
   throw lastError || new Error('OpenRouter request failed')
+}
+
+function sortModelsByPriority(models, priorityList) {
+  const list = Array.isArray(models) ? models : []
+  const priority = new Map((priorityList || []).map((m, i) => [m, i]))
+  return [...list].sort((a, b) => (priority.get(a) ?? 999) - (priority.get(b) ?? 999))
 }
 
 router.post('/chat', async (req, res) => {
@@ -276,15 +289,85 @@ Language:
 // Audio -> transcript + summary (Gemini only)
 router.post('/voice-summary', async (req, res) => {
   try {
-    // Voice summaries require Gemini regardless of the chat provider selection.
-    // (You can keep AI_PROVIDER=openrouter for /chat while enabling Gemini just for this endpoint.)
+    const provider = resolveProvider()
+    const { transcript: rawTranscript = '', dataUrl, topic = '' } = req.body || {}
+
+    // Path A (free-ish): client provides transcript (e.g. browser SpeechRecognition) and we only summarize via /chat provider.
+    const transcript = typeof rawTranscript === 'string' ? rawTranscript.trim() : ''
+    if (transcript) {
+      if (provider === 'none') return res.status(500).json({ error: 'No AI provider configured' })
+      const lang = detectLang(transcript)
+
+      const systemInstruction =
+        `You summarize classroom transcripts for students.\n` +
+        `Rules:\n` +
+        `- Reply in ${lang}.\n` +
+        `- Return ONLY the summary text (no headings).\n` +
+        `- Fix obvious speech-to-text errors and remove filler words.\n` +
+        `- Be concise, clear, and faithful to the transcript.\n`
+
+      const userPrompt =
+        `Summarize this transcript in a concise, student-friendly way.\n` +
+        (topic ? `Topic hint: ${String(topic).slice(0, 200)}\n` : '') +
+        `\nTranscript:\n${transcript}\n`
+
+      let summary = ''
+      if (provider === 'openrouter') {
+        const priorityList =
+          lang === 'Turkish'
+            ? [
+                'qwen/qwen3-4b:free',
+                'tngtech/deepseek-r1t2-chimera:free',
+                'google/gemma-3-4b-it:free',
+                'xiaomi/mimo-v2-flash:free',
+              ]
+            : [
+                'google/gemma-3-4b-it:free',
+                'tngtech/deepseek-r1t2-chimera:free',
+                'xiaomi/mimo-v2-flash:free',
+                'qwen/qwen3-4b:free',
+              ]
+
+        const response = await openRouterChatWithFallback({
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userPrompt },
+          ],
+          models: sortModelsByPriority(openRouterModels, priorityList),
+          temperature: 0.2,
+          maxTokens: 700,
+        })
+        const messageContent = response?.choices?.[0]?.message?.content
+        if (Array.isArray(messageContent)) {
+          summary = messageContent.map((item) => (item?.type === 'text' ? item.text : '')).join('')
+        } else if (typeof messageContent === 'string') {
+          summary = messageContent
+        }
+      } else if (provider === 'gemini') {
+        const model = gemini.getGenerativeModel({
+          model: geminiModelName,
+          systemInstruction,
+        })
+        const response = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 700 },
+        })
+        summary = response?.response?.text?.() || ''
+      } else {
+        return res.status(500).json({ error: `Unsupported AI provider: ${provider}` })
+      }
+
+      return res.json({ transcript, summary })
+    }
+
+    // Path B: server-side audio transcription (requires Gemini multimodal).
     if (!gemini) {
       return res.status(400).json({
-        error: 'Voice summary requires Gemini. Set GEMINI_API_KEY on the server.',
+        error:
+          'No transcript provided. Enable browser speech-to-text (recommended) or set GEMINI_API_KEY on the server for audio transcription.',
       })
     }
 
-    const { dataUrl, topic = '' } = req.body || {}
     const parsed = parseBase64DataUrl(dataUrl)
     if (!parsed) return res.status(400).json({ error: 'dataUrl must be a base64 data URL (data:audio/...;base64,...)' })
     if (!String(parsed.mimeType || '').toLowerCase().startsWith('audio/')) {
@@ -333,10 +416,10 @@ router.post('/voice-summary', async (req, res) => {
 
     const text = response?.response?.text?.() || ''
     const obj = tryParseJsonObject(text) || {}
-    const transcript = typeof obj.transcript === 'string' ? obj.transcript : ''
+    const finalTranscript = typeof obj.transcript === 'string' ? obj.transcript : ''
     const summary = typeof obj.summary === 'string' ? obj.summary : (text || '')
 
-    return res.json({ transcript, summary })
+    return res.json({ transcript: finalTranscript, summary })
   } catch (e) {
     console.error('ai.routes voice-summary error', e)
     return res.status(500).json({ error: 'Voice summary failed' })

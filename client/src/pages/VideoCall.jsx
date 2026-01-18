@@ -12,11 +12,19 @@ import {
   ToggleVideoPublishingButton,
 } from '@stream-io/video-react-sdk'
 import '@stream-io/video-react-sdk/dist/css/styles.css'
-import { AiService } from '../services/ai'
 import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
 
 const SUMMARY_STORAGE_KEY = 'graedufy_voice_summaries'
 const WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/call/'
+
+// Web Speech API: only rely on Chrome / Edge for production usage.
+function isChromeOrEdge() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const isEdge = ua.includes('Edg/')
+  const isChrome = ua.includes('Chrome/') && !isEdge
+  return isEdge || isChrome
+}
 
 function saveSummaryLocally(entry) {
   if (typeof window === 'undefined') return
@@ -51,11 +59,38 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const leavingRef = useRef(false)
   const hasLeftRef = useRef(false)
   const [audioDataUrl, setAudioDataUrl] = useState('')
-  const speechRecRef = useRef(null)
-  const speechTranscriptRef = useRef('')
+
+  // -----------------------------
+  // Speech recognition (Chrome/Edge)
+  // -----------------------------
+  // MUST NOT be recreated on re-render. We create it once and keep it in a ref.
+  const recognitionRef = useRef(null)
+  const speechStateRef = useRef({
+    active: false,
+    running: false,
+    starting: false,
+    manualStop: false,
+    disabled: false,
+    restartTimer: null,
+  })
+  const finalTranscriptRef = useRef('')
+  const interimTranscriptRef = useRef('')
+  const lastSessionKeyRef = useRef(null)
+
   const [speechSupported, setSpeechSupported] = useState(false)
+  const [speechError, setSpeechError] = useState('')
   const [speechLiveText, setSpeechLiveText] = useState('')
+  // SpeechRecognition language:
+  // - 'auto' follows the browser/user language
+  // - explicit locale forces recognition to that language (Chrome's Speech API behavior)
+  const [speechLang, setSpeechLang] = useState('tr-TR')
+
+  const [micLevel, setMicLevel] = useState(0)
+  const micMeterRef = useRef({ rafId: null, audioContext: null })
   const [expanded, setExpanded] = useState(false)
+  const recordingTranscriptStartRef = useRef('')
+  const recordingSessionKeyRef = useRef(null)
+  const savedRecordingKeyRef = useRef(null)
   const callLabel = callNameProp || callIdProp || 'Active Call'
   const isElectron =
     typeof navigator !== 'undefined' &&
@@ -68,6 +103,9 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
   const shouldOpenExternally = isElectron || isCapacitor
   const externalUrl = `${WEB_CALL_BASE}${encodeURIComponent(callIdProp || 'graedufy-demo')}`
   const [externalOpened, setExternalOpened] = useState(false)
+
+  // Call is considered active once StreamCall is created/joined.
+  const callActive = Boolean(call) && !shouldOpenExternally
 
   const channelMemberIds = useMemo(() => {
     try {
@@ -154,22 +192,253 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     recorderRef.current = null
   }
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const supported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
-    setSpeechSupported(supported)
-  }, [])
-
-  const stopSpeechRecognition = () => {
-    const sr = speechRecRef.current
-    if (sr) {
-      try { sr.onresult = null } catch {}
-      try { sr.onerror = null } catch {}
-      try { sr.onend = null } catch {}
-      try { sr.stop?.() } catch {}
-    }
-    speechRecRef.current = null
+  // -----------------------------
+  // Speech recognition helpers
+  // -----------------------------
+  const resetSpeechBuffers = () => {
+    finalTranscriptRef.current = ''
+    interimTranscriptRef.current = ''
+    setTranscript('')
+    setSpeechLiveText('')
   }
+
+  const clearSpeechRestartTimer = () => {
+    const state = speechStateRef.current
+    if (state.restartTimer) {
+      try { clearTimeout(state.restartTimer) } catch {}
+      state.restartTimer = null
+    }
+  }
+
+  const stopSpeech = () => {
+    const recognition = recognitionRef.current
+    const state = speechStateRef.current
+
+    state.manualStop = true
+    clearSpeechRestartTimer()
+
+    if (!recognition) return
+    if (!state.running && !state.starting) return
+
+    try {
+      recognition.stop()
+    } catch {
+      try { recognition.abort?.() } catch {}
+    } finally {
+      state.running = false
+      state.starting = false
+    }
+  }
+
+  const startSpeech = () => {
+    const recognition = recognitionRef.current
+    const state = speechStateRef.current
+
+    if (!recognition) return
+    if (state.disabled) return
+    if (state.running || state.starting) return
+
+    state.manualStop = false
+    state.starting = true
+
+    try {
+      recognition.start()
+    } catch {
+      // InvalidStateError happens if start() is called too fast or while already running.
+    } finally {
+      // Release the "starting" lock shortly after calling start().
+      setTimeout(() => {
+        speechStateRef.current.starting = false
+      }, 250)
+    }
+  }
+
+  const stopMicMeter = () => {
+    const meter = micMeterRef.current
+    if (meter?.rafId) {
+      try { cancelAnimationFrame(meter.rafId) } catch {}
+    }
+    meter.rafId = null
+    if (meter?.audioContext) {
+      try { meter.audioContext.close() } catch {}
+    }
+    meter.audioContext = null
+    setMicLevel(0)
+  }
+
+  const startMicMeter = (stream) => {
+    stopMicMeter()
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext
+      if (!AudioCtx) return
+      const audioContext = new AudioCtx()
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 1024
+      source.connect(analyser)
+
+      const data = new Uint8Array(analyser.fftSize)
+      const tick = () => {
+        try {
+          analyser.getByteTimeDomainData(data)
+          let sum = 0
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128
+            sum += v * v
+          }
+          const rms = Math.sqrt(sum / data.length)
+          // Non-linear scale for UI (more sensitive at low volumes)
+          const level = Math.max(0, Math.min(1, rms * 3.5))
+          setMicLevel(level)
+        } catch {}
+        micMeterRef.current.rafId = requestAnimationFrame(tick)
+      }
+
+      micMeterRef.current.audioContext = audioContext
+      micMeterRef.current.rafId = requestAnimationFrame(tick)
+    } catch {}
+  }
+
+  // Create SpeechRecognition once and keep it stable across renders.
+  useEffect(() => {
+    if (shouldOpenExternally) return undefined
+    if (typeof window === 'undefined') return undefined
+
+    // Chrome / Edge only (production-safe assumption).
+    if (!isChromeOrEdge()) {
+      setSpeechSupported(false)
+      setSpeechError('Live transcription supports Chrome / Edge only.')
+      return undefined
+    }
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) {
+      setSpeechSupported(false)
+      setSpeechError('Speech recognition is not available in this browser.')
+      return undefined
+    }
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+    recognition.lang = (navigator?.language || 'en-US').toLowerCase().startsWith('tr') ? 'tr-TR' : (navigator?.language || 'en-US')
+
+    recognitionRef.current = recognition
+    setSpeechSupported(true)
+    setSpeechError('')
+
+    const state = speechStateRef.current
+
+    recognition.onstart = () => {
+      state.running = true
+      state.starting = false
+      setSpeechError('')
+    }
+
+    recognition.onresult = (event) => {
+      try {
+        let interim = ''
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i]
+          const text = (result?.[0]?.transcript || '').trim()
+          if (!text) continue
+
+          if (result.isFinal) {
+            finalTranscriptRef.current = `${finalTranscriptRef.current}${text} `.replace(/\s+/g, ' ')
+          } else {
+            interim += `${text} `
+          }
+        }
+
+        interimTranscriptRef.current = interim.trim()
+        const finalText = finalTranscriptRef.current.trim()
+        const combined = `${finalText} ${interimTranscriptRef.current}`.trim()
+
+        if (finalText) setTranscript(finalText)
+        setSpeechLiveText(combined)
+      } catch (err) {
+        console.warn('speech onresult error', err)
+      }
+    }
+
+    recognition.onerror = (event) => {
+      const code = String(event?.error || '').toLowerCase()
+
+      // Permissions / capture issues: disable auto-restarts and surface a helpful message.
+      if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+        state.disabled = true
+        state.manualStop = true
+        setSpeechError('Speech recognition permission denied or microphone unavailable.')
+        stopSpeech()
+        return
+      }
+
+      // Other transient errors often recover on restart.
+      // Examples: "no-speech", "aborted", "network"
+      setSpeechError(code ? `Speech recognition error: ${code}` : 'Speech recognition error')
+    }
+
+    recognition.onend = () => {
+      state.running = false
+      state.starting = false
+
+      // Auto-restart while active, unless manually stopped or disabled.
+      if (!state.active || state.manualStop || state.disabled) return
+
+      clearSpeechRestartTimer()
+      state.restartTimer = setTimeout(() => {
+        // Guard again at time of restart.
+        const s = speechStateRef.current
+        if (!s.active || s.manualStop || s.disabled) return
+        startSpeech()
+      }, 350)
+    }
+
+    const onVisibility = () => {
+      const s = speechStateRef.current
+      if (document.visibilityState === 'visible' && s.active && !s.disabled && !s.manualStop) {
+        startSpeech()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      stopSpeech()
+      try {
+        recognition.onstart = null
+        recognition.onresult = null
+        recognition.onerror = null
+        recognition.onend = null
+      } catch {}
+      recognitionRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldOpenExternally])
+
+  // Update recognition language without recreating the instance.
+  useEffect(() => {
+    const recognition = recognitionRef.current
+    if (!recognition) return
+
+    const autoLang = (navigator?.language || 'en-US').toLowerCase().startsWith('tr') ? 'tr-TR' : (navigator?.language || 'en-US')
+    const nextLang = speechLang === 'auto' ? autoLang : speechLang
+
+    try {
+      recognition.lang = nextLang
+    } catch {}
+
+    // Apply lang changes immediately if we're actively transcribing.
+    const state = speechStateRef.current
+    if (state.active && (state.running || state.starting) && !state.disabled) {
+      state.manualStop = true
+      stopSpeech()
+      state.manualStop = false
+      setTimeout(() => startSpeech(), 200)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speechLang])
 
   const safeLeave = async () => {
     if (!call) return
@@ -179,6 +448,10 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     leavingRef.current = true
     setLeaving(true)
     try {
+      // Stop speech recognition before leaving the call to avoid auto-restart loops.
+      speechStateRef.current.active = false
+      stopSpeech()
+
       await call.leave()
       hasLeftRef.current = true
     } catch (err) {
@@ -194,58 +467,45 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     }
   }
 
+  // Start speech recognition when the call is active; stop when it ends.
+  useEffect(() => {
+    const state = speechStateRef.current
+    state.active = Boolean(callActive) && Boolean(speechSupported) && !state.disabled
+
+    if (!speechSupported || state.disabled) return
+
+    if (callActive) {
+      // Reset buffers once per call session.
+      const sessionKey = callIdProp || 'graedufy-demo'
+      if (lastSessionKeyRef.current !== sessionKey) {
+        resetSpeechBuffers()
+        lastSessionKeyRef.current = sessionKey
+      }
+      startSpeech()
+    } else {
+      stopSpeech()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callActive, speechSupported, callIdProp])
+
   const startRecording = async () => {
     setSummaryError('')
     setSummary('')
-    setTranscript('')
-    setSpeechLiveText('')
     setAudioBlob(null)
     setAudioDataUrl('')
-    speechTranscriptRef.current = ''
+    recordingSessionKeyRef.current = `${Date.now()}`
+    savedRecordingKeyRef.current = null
+    recordingTranscriptStartRef.current = (finalTranscriptRef.current || transcript || '').trim()
     try {
-      stopSpeechRecognition()
-      if (typeof window !== 'undefined') {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-        if (SpeechRecognition) {
-          const sr = new SpeechRecognition()
-          sr.continuous = true
-          sr.interimResults = true
-          // Best-effort language selection (default to Turkish)
-          const navLang = (navigator?.language || 'tr-TR').toLowerCase()
-          sr.lang = navLang.startsWith('tr') ? 'tr-TR' : (navigator?.language || 'tr-TR')
-
-          sr.onresult = (event) => {
-            try {
-              let interim = ''
-              for (let i = event.resultIndex; i < event.results.length; i++) {
-                const chunk = event.results[i]?.[0]?.transcript || ''
-                if (event.results[i].isFinal) {
-                  speechTranscriptRef.current = `${speechTranscriptRef.current}${chunk}`
-                } else {
-                  interim += chunk
-                }
-              }
-              const combined = `${speechTranscriptRef.current} ${interim}`.trim()
-              setSpeechLiveText(combined)
-              // keep transcript field synced with the best known text
-              if (speechTranscriptRef.current.trim()) {
-                setTranscript(speechTranscriptRef.current.trim())
-              }
-            } catch {}
-          }
-          sr.onerror = () => {
-            // ignore; speech might be blocked by permissions or unsupported in this context
-          }
-          sr.onend = () => {
-            // no-op; we stop it explicitly
-          }
-
-          try { sr.start() } catch {}
-          speechRecRef.current = sr
-        }
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      })
+      startMicMeter(stream)
       const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 }
       const recorder = new MediaRecorder(stream, options)
       const chunks = []
@@ -267,10 +527,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
           }
         }
         reader.readAsDataURL(blob)
-        stopSpeechRecognition()
-        if (speechTranscriptRef.current.trim()) {
-          setTranscript(speechTranscriptRef.current.trim())
-        }
+        stopMicMeter()
         stopRecordingTracks()
         setIsRecording(false)
       }
@@ -279,6 +536,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
       setIsRecording(true)
     } catch (err) {
       console.error('record error', err)
+      stopMicMeter()
       setSummaryError('Microphone access denied or unavailable.')
     }
   }
@@ -288,53 +546,107 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     if (recorder && recorder.state !== 'inactive') {
       recorder.stop()
     }
-    stopSpeechRecognition()
+    stopMicMeter()
+
+    // Persist the transcript segment for this recording so it can be summarized on the Summaries page.
+    setTimeout(() => {
+      try { saveCurrentRecordingTranscript() } catch {}
+    }, 400)
   }
 
-  const summarizeAudio = async () => {
+  const getRecordingTranscriptText = () => {
+    const start = (recordingTranscriptStartRef.current || '').trim()
+    const currentFinal = (finalTranscriptRef.current || '').trim()
+    const currentCombined = (speechLiveText || currentFinal).trim()
+
+    if (!start) return currentCombined || currentFinal
+    if (currentFinal && currentFinal.startsWith(start)) return currentFinal.slice(start.length).trim()
+    if (currentCombined && currentCombined.startsWith(start)) return currentCombined.slice(start.length).trim()
+    return currentCombined || currentFinal
+  }
+
+  const saveTranscriptToSummaries = (rawText, { preventDuplicatesKey } = {}) => {
+    const transcriptText = String(rawText || '').trim()
+    if (transcriptText.length < 20) return false
+
+    if (preventDuplicatesKey && savedRecordingKeyRef.current === preventDuplicatesKey) return false
+    if (preventDuplicatesKey) savedRecordingKeyRef.current = preventDuplicatesKey
+
+    const entry = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+      callId: callIdProp || 'graedufy-demo',
+      callName: callLabel,
+      topic: summaryTopic,
+      summary: '',
+      transcript: transcriptText,
+      createdAt: Date.now(),
+    }
+    saveSummaryLocally(entry)
+    setTranscript(transcriptText)
+    return true
+  }
+
+  const saveCurrentRecordingTranscript = () => {
+    const sessionKey = recordingSessionKeyRef.current
+    const segment = getRecordingTranscriptText()
+    return saveTranscriptToSummaries(segment, { preventDuplicatesKey: sessionKey || undefined })
+  }
+
+  const saveCurrentTranscript = () => {
+    if (isRecording) return saveCurrentRecordingTranscript()
+    const full = (finalTranscriptRef.current || transcript || speechLiveText || '').trim()
+    return saveTranscriptToSummaries(full)
+  }
+
+  const summarizeFromTranscript = async (rawText) => {
     setProcessingSummary(true)
     setSummaryError('')
     try {
-      const transcriptText = (speechTranscriptRef.current || transcript || speechLiveText || '').trim()
+      const transcriptText = String(rawText || '').trim()
       let finalTranscript = ''
       let finalSummary = ''
 
-      // Prefer free-ish path: browser speech-to-text + /ai/chat summarization (OpenRouter fallbacks supported).
+      // Prefer free-ish path: browser speech-to-text + server summarization (OpenRouter fallbacks supported).
       if (transcriptText.length >= 20) {
         const http = await authedApi(getToken)
         const topicHint = summaryTopic ? `Topic hint: ${summaryTopic}\n` : ''
-        const prompt =
-          `Aşağıdaki konuşma dökümünü kısa ve anlaşılır şekilde özetle.\n` +
-          `Başlık kullanma, sadece özet ver.\n` +
-          `${topicHint}` +
-          `\nTranscript:\n${transcriptText}\n`
 
-        const requestInput =
-          `Summarize the following transcript in a concise, student-friendly way.\n` +
-          `No headings; return only the summary.\n` +
-          `Reply in the same language as the transcript.\n` +
-          `${topicHint}` +
-          `\nTranscript:\n${transcriptText}\n`
-        const { data } = await http.post('/ai/chat', { input: requestInput })
-        finalTranscript = transcriptText
-        finalSummary = data?.reply || ''
+        // Some deployments still have /ai/voice-summary wired to Gemini-only audio transcription.
+        // We attempt transcript-only summarization first; on "Gemini required" errors, fall back to /ai/chat.
+        try {
+          const { data } = await http.post('/ai/voice-summary', {
+            transcript: transcriptText,
+            topic: summaryTopic,
+          })
+          finalTranscript = data?.transcript || transcriptText
+          finalSummary = data?.summary || ''
+        } catch (e) {
+          const serverMsg = String(e?.response?.data?.error || e?.message || '')
+          const isGeminiRequired =
+            /gemini/i.test(serverMsg) ||
+            /gemini_api_key/i.test(serverMsg) ||
+            /requires gemini/i.test(serverMsg)
+
+          if (!isGeminiRequired) throw e
+
+          const requestInput =
+            `Summarize the following transcript in a concise, student-friendly way.\n` +
+            `No headings; return only the summary.\n` +
+            `Reply in the same language as the transcript.\n` +
+            `${topicHint}` +
+            `\nTranscript:\n${transcriptText}\n`
+          const { data } = await http.post('/ai/chat', { input: requestInput })
+          finalTranscript = transcriptText
+          finalSummary = data?.reply || ''
+        }
+
+        if (!String(finalSummary || '').trim()) {
+          setSummaryError('AI returned an empty summary. Please try again.')
+          return
+        }
       } else {
-        // Fallback: send audio to server (requires GEMINI_API_KEY on the server)
-        if (!audioBlob || !audioDataUrl) {
-          setSummaryError('Record audio (or enable browser speech-to-text) first.')
-          return
-        }
-        const approxBytes = Math.ceil((audioDataUrl.length * 3) / 4)
-        if (approxBytes > 12 * 1024 * 1024) {
-          setSummaryError('Recording is too large. Please record a shorter clip (under ~12MB).')
-          return
-        }
-        const { data } = await AiService.voiceSummary(getToken, {
-          dataUrl: audioDataUrl,
-          topic: summaryTopic,
-        })
-        finalTranscript = data.transcript || ''
-        finalSummary = data.summary || ''
+        setSummaryError('Transcript is empty. Use Chrome/Edge and allow microphone + speech recognition, then try again.')
+        return
       }
 
       setTranscript(finalTranscript)
@@ -358,9 +670,29 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     }
   }
 
+  const summarizeCurrentRecording = async () => {
+    const sessionKey = recordingSessionKeyRef.current
+    if (!sessionKey) return
+    if (savedRecordingKeyRef.current === sessionKey) return
+    if (processingSummary) return
+
+    const segment = getRecordingTranscriptText()
+    if (String(segment || '').trim().length < 20) return
+
+    savedRecordingKeyRef.current = sessionKey
+    await summarizeFromTranscript(segment)
+  }
+
+  const summarizeAudio = async () => {
+    const transcriptText = (finalTranscriptRef.current || transcript || speechLiveText || '').trim()
+    await summarizeFromTranscript(transcriptText)
+  }
+
   useEffect(() => {
     return () => {
-      stopSpeechRecognition()
+      speechStateRef.current.active = false
+      stopSpeech()
+      stopMicMeter()
       stopRecordingTracks()
     }
   }, [])
@@ -455,6 +787,21 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                               End
                             </button>
                           </div>
+
+                          {isRecording && (
+                            <div className="flex items-center gap-2 text-xs text-white/70">
+                              <div className="w-28 h-2 rounded bg-white/10 overflow-hidden">
+                                <div
+                                  className={`h-full ${micLevel < 0.12 ? 'bg-warning' : 'bg-success'}`}
+                                  style={{ width: `${Math.round(micLevel * 100)}%` }}
+                                />
+                              </div>
+                              <div className="min-w-[180px]">
+                                {micLevel < 0.12 ? 'Mic level low — speak closer / louder.' : 'Mic level OK'}
+                              </div>
+                            </div>
+                          )}
+
                           <div className="flex flex-wrap items-center gap-2">
                             {channel && (
                               <button
@@ -464,6 +811,18 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                               >
                                 Add People
                               </button>
+                            )}
+                            {speechSupported && (
+                              <select
+                                className="select select-xs select-bordered bg-white/10 text-white border-white/20"
+                                value={speechLang}
+                                onChange={(e) => setSpeechLang(e.target.value)}
+                                title="Transcription language"
+                              >
+                                <option value="auto">Auto</option>
+                                <option value="tr-TR">Turkish (tr-TR)</option>
+                                <option value="en-US">English (en-US)</option>
+                              </select>
                             )}
                             <input
                               type="text"
@@ -479,10 +838,14 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                             )}
                             <button
                               className="btn btn-xs btn-accent"
-                              disabled={processingSummary || isRecording || !audioBlob}
-                              onClick={summarizeAudio}
+                              disabled={
+                                (isRecording
+                                  ? getRecordingTranscriptText().trim().length < 20
+                                  : (speechLiveText || transcript || finalTranscriptRef.current || '').trim().length < 20)
+                              }
+                              onClick={saveCurrentTranscript}
                             >
-                              {processingSummary ? 'Working...' : 'Send summary'}
+                              Save transcript
                             </button>
                           </div>
                         </div>
@@ -497,7 +860,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                         </div>
                       )}
 
-                      {(isRecording || audioBlob || summary || transcript || summaryError) && (
+                      {(isRecording || audioBlob || summary || transcript || summaryError || speechError) && (
                         <div className="absolute bottom-4 right-4 w-full max-w-md bg-black/80 border border-white/10 rounded-xl p-4 space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="font-semibold text-white text-sm">Live class summary</div>
@@ -505,6 +868,7 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
                               {isRecording ? 'Recording...' : processingSummary ? 'Processing...' : audioBlob ? 'Ready to send' : ''}
                             </div>
                           </div>
+                          {speechError && <div className="text-warning text-sm">{speechError}</div>}
                           {summaryError && <div className="text-error text-sm">{summaryError}</div>}
                           {transcript && (
                             <div className="text-xs text-white/70 max-h-16 overflow-auto border border-white/10 rounded p-2">
