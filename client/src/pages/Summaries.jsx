@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { authedApi } from '../lib/api.js'
 import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
+import { downloadSummaryTxt } from '../utils/downloadSummaryTxt'
 
 const STORAGE_KEY = 'graedufy_voice_summaries'
 const MIN_TRANSCRIPT_LEN = 20
@@ -41,6 +42,7 @@ export default function Summaries() {
   const [items, setItems] = useState(loadSummaries)
   const [busyId, setBusyId] = useState('')
   const [itemError, setItemError] = useState({})
+  const [pdfBusyId, setPdfBusyId] = useState('')
 
   // refresh on mount in case another tab added entries
   useEffect(() => {
@@ -97,8 +99,9 @@ export default function Summaries() {
 
         const topicHint = topic ? `Topic hint: ${topic}\n` : ''
         const requestInput =
-          `Summarize the following transcript in a concise, student-friendly way.\n` +
-          `No headings; return only the summary.\n` +
+          `Summarize the following transcript in a student-friendly way.\n` +
+          `Make it medium-length (about 8-12 sentences) so it's useful for studying.\n` +
+          `No headings; return only the summary text.\n` +
           `Reply in the same language as the transcript.\n` +
           `${topicHint}` +
           `\nTranscript:\n${transcript}\n`
@@ -121,6 +124,58 @@ export default function Summaries() {
       }))
     } finally {
       setBusyId('')
+    }
+  }
+
+  const downloadPdf = async (item) => {
+    const id = item?.id || item?.createdAt
+    if (!id) return
+    if (pdfBusyId) return
+    setPdfBusyId(String(id))
+    setItemError((e) => ({ ...e, [id]: '' }))
+    try {
+      const http = authedApi(getToken)
+      const res = await http.post(
+        '/ai/summary-pdf',
+        {
+          summary: item.summary || '',
+          transcript: item.transcript || '',
+          topic: item.topic || '',
+          callId: item.callName || item.callId || '',
+          createdAt: item.createdAt,
+        },
+        { responseType: 'blob' }
+      )
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'summary.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => {
+        try { URL.revokeObjectURL(url) } catch {}
+      }, 1000)
+    } catch (err) {
+      // Fallback to client-side PDF (may not preserve Turkish chars as text).
+      try {
+        downloadSummaryPdf({
+          summary: item.summary,
+          transcript: item.transcript,
+          topic: item.topic,
+          callId: item.callName || item.callId,
+          createdAt: item.createdAt,
+        })
+        setItemError((e) => ({ ...e, [id]: 'Server PDF failed; used fallback PDF. Use TXT for perfect Turkish characters.' }))
+      } catch {
+        setItemError((e) => ({
+          ...e,
+          [id]: String(err?.response?.data?.error || err?.message || 'Failed to download PDF'),
+        }))
+      }
+    } finally {
+      setPdfBusyId('')
     }
   }
 
@@ -181,7 +236,14 @@ export default function Summaries() {
                   )}
                   <button
                     className="btn btn-xs btn-outline"
-                    onClick={() => downloadSummaryPdf({
+                    disabled={pdfBusyId && pdfBusyId !== String(item.id || item.createdAt)}
+                    onClick={() => downloadPdf(item)}
+                  >
+                    {pdfBusyId === String(item.id || item.createdAt) ? 'Downloading...' : 'Download PDF'}
+                  </button>
+                  <button
+                    className="btn btn-xs btn-outline"
+                    onClick={() => downloadSummaryTxt({
                       summary: item.summary,
                       transcript: item.transcript,
                       topic: item.topic,
@@ -189,7 +251,7 @@ export default function Summaries() {
                       createdAt: item.createdAt,
                     })}
                   >
-                    Download PDF
+                    Download TXT
                   </button>
                   <button className="btn btn-xs btn-ghost" onClick={() => removeItem(item.id || item.createdAt)}>
                     Delete

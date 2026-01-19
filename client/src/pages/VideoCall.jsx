@@ -656,8 +656,9 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
           if (!isGeminiRequired) throw e
 
           const requestInput =
-            `Summarize the following transcript in a concise, student-friendly way.\n` +
-            `No headings; return only the summary.\n` +
+            `Summarize the following transcript in a student-friendly way.\n` +
+            `Make it medium-length (about 8-12 sentences) so it's useful for studying.\n` +
+            `No headings; return only the summary text.\n` +
             `Reply in the same language as the transcript.\n` +
             `${topicHint}` +
             `\nTranscript:\n${transcriptText}\n`

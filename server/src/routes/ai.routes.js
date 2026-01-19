@@ -1,6 +1,7 @@
 import express from 'express'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { OpenRouter } from '@openrouter/sdk'
+import puppeteer from 'puppeteer'
 
 const router = express.Router()
 const gemini = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
@@ -162,6 +163,21 @@ function sortModelsByPriority(models, priorityList) {
   return [...list].sort((a, b) => (priority.get(a) ?? 999) - (priority.get(b) ?? 999))
 }
 
+function safeFileName(base) {
+  return String(base || '')
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function formatStamp(ts) {
+  try {
+    return new Date(ts).toLocaleString()
+  } catch {
+    return ''
+  }
+}
+
 router.post('/chat', async (req, res) => {
   try {
     const provider = resolveProvider()
@@ -304,10 +320,16 @@ router.post('/voice-summary', async (req, res) => {
         `- Reply in ${lang}.\n` +
         `- Return ONLY the summary text (no headings).\n` +
         `- Fix obvious speech-to-text errors and remove filler words.\n` +
-        `- Be concise, clear, and faithful to the transcript.\n`
+        `- Be clear and faithful to the transcript.\n` +
+        `- Aim for a medium-length summary (about 8-12 sentences).\n` +
+        `- Include key concepts, steps, and outcomes.\n` +
+        (lang === 'Turkish'
+          ? `- Use proper Turkish characters (ğ, ü, ş, ı, İ, ö, ç). Do NOT replace them with digits/underscores.\n`
+          : '')
 
       const userPrompt =
-        `Summarize this transcript in a concise, student-friendly way.\n` +
+        `Summarize this transcript in a student-friendly way.\n` +
+        `Make it detailed enough that a student can study from it.\n` +
         (topic ? `Topic hint: ${String(topic).slice(0, 200)}\n` : '') +
         `\nTranscript:\n${transcript}\n`
 
@@ -335,7 +357,7 @@ router.post('/voice-summary', async (req, res) => {
           ],
           models: sortModelsByPriority(openRouterModels, priorityList),
           temperature: 0.2,
-          maxTokens: 700,
+          maxTokens: 1000,
         })
         const messageContent = response?.choices?.[0]?.message?.content
         if (Array.isArray(messageContent)) {
@@ -350,7 +372,7 @@ router.post('/voice-summary', async (req, res) => {
         })
         const response = await model.generateContent({
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 700 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
         })
         summary = response?.response?.text?.() || ''
       } else {
@@ -423,6 +445,87 @@ router.post('/voice-summary', async (req, res) => {
   } catch (e) {
     console.error('ai.routes voice-summary error', e)
     return res.status(500).json({ error: 'Voice summary failed' })
+  }
+})
+
+// Server-side PDF generation (Unicode-safe) using Puppeteer + Arial (or system sans-serif fallback).
+router.post('/summary-pdf', async (req, res) => {
+  let browser = null
+  try {
+    const { summary = '', transcript = '', topic = '', callId = '', createdAt } = req.body || {}
+    const created = createdAt || Date.now()
+
+    const heading = 'Live Class Summary'
+    const topicText = String(topic || '').trim()
+    const callLabel = String(callId || '').trim()
+    const sumText = String(summary || '').trim()
+    const trText = String(transcript || '').trim()
+
+    const html = `<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      @page { size: A4; margin: 16mm; }
+      html, body { padding: 0; margin: 0; }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #111827;
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      h1 { font-size: 20px; margin: 0 0 10px 0; }
+      h2 { font-size: 14px; margin: 16px 0 6px 0; }
+      .meta { color: #374151; font-size: 12px; }
+      .meta div { margin: 2px 0; }
+      .box {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #fafafa;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>${heading}</h1>
+    <div class="meta">
+      ${topicText ? `<div><strong>Topic:</strong> ${topicText.replace(/</g, '&lt;')}</div>` : ''}
+      ${callLabel ? `<div><strong>Call ID:</strong> ${callLabel.replace(/</g, '&lt;')}</div>` : ''}
+      <div><strong>Created:</strong> ${formatStamp(created).replace(/</g, '&lt;')}</div>
+    </div>
+    <h2>Summary</h2>
+    <div class="box">${(sumText || 'No summary provided.').replace(/</g, '&lt;')}</div>
+    ${trText ? `<h2>Transcript</h2><div class="box">${trText.replace(/</g, '&lt;')}</div>` : ''}
+  </body>
+</html>`
+
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    })
+    const page = await browser.newPage()
+    await page.setContent(html, { waitUntil: 'networkidle0' })
+
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+    })
+
+    const fileBase = safeFileName(`${topicText || 'summary'}-${new Date(created).toISOString().slice(0, 10)}`) || 'summary'
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`)
+    return res.status(200).send(pdf)
+  } catch (e) {
+    console.error('ai.routes summary-pdf error', e)
+    return res.status(500).json({ error: 'PDF generation failed' })
+  } finally {
+    if (browser) {
+      try { await browser.close() } catch {}
+    }
   }
 })
 
