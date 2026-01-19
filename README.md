@@ -71,7 +71,7 @@ Environment variables
 - server/.env
   - PORT: default 5001
   - MONGODB_URI: your Mongo connection string
-  - CORS_ORIGIN: http://localhost:5173 (client URL)
+  - CORS_ORIGIN: allowed frontend origin(s). Supports comma-separated list, e.g. `https://your-app.vercel.app,http://localhost:5173`
   - CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY from Clerk dashboard
   - STREAM_API_KEY and STREAM_API_SECRET from Stream dashboard (chat + video)
   - AI_PROVIDER: gemini | openrouter | openai | azure (optional)
@@ -90,3 +90,14 @@ Environment variables
   - VITE_API_URL: http://localhost:5001
   - VITE_DEFAULT_THEME: light | dark | emerald
   - VITE_STREAM_API_KEY: Stream Chat/Video public key
+
+Deployment (Backend)
+- Deploy the `server/` folder as a Node web service (the repo root does not include a `package.json`).
+- Start command: `npm start`
+- Required env vars: `MONGODB_URI`, `CLERK_SECRET_KEY` (plus any Stream/AI keys you use)
+- Set `CORS_ORIGIN` to your deployed frontend URL(s) to avoid browser CORS failures.
+- Health checks:
+  - `GET /health` returns server status + `dbState`
+  - `GET /ready` returns `200` only when MongoDB is connected (otherwise `503`)
+
+If MongoDB Atlas is used, ensure Network Access allows connections from your deploy provider (often easiest during testing: allow `0.0.0.0/0`).

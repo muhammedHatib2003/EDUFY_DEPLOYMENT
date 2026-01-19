@@ -25,8 +25,30 @@ const MONGODB_URI = process.env.MONGODB_URI
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
 
 // Middleware
-// Allowed origins (production + local)
-const allowedOrigins = [
+function parseOriginList(value) {
+  if (!value || typeof value !== 'string') return []
+  return value
+    .split(/[,\n]/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/\/+$/, ''))
+}
+
+function buildVercelPreviewRegex(origin) {
+  try {
+    const url = new URL(origin)
+    if (!url.hostname.endsWith('.vercel.app')) return null
+    const base = url.hostname.replace(/\.vercel\.app$/, '')
+    // Allow production + preview deployments: <base>.vercel.app or <base>-<suffix>.vercel.app
+    return new RegExp(`^https?:\\\\/\\\\/${base}(-[a-z0-9-]+)?\\\\.vercel\\\\.app$`, 'i')
+  } catch {
+    return null
+  }
+}
+
+// Allowed origins (env + sensible defaults)
+const allowedOrigins = new Set([
+  ...parseOriginList(CORS_ORIGIN),
   'https://edufy-deployment.vercel.app',
   'http://localhost:5173',
 
@@ -35,32 +57,39 @@ const allowedOrigins = [
   'http://localhost',
   'capacitor://localhost',
   'ionic://localhost',
-]
+])
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Mobile & server-to-server requests
-      if (!origin) return callback(null, true)
+const allowAllOrigins = allowedOrigins.has('*')
+const vercelPreviewRegexes = [...allowedOrigins]
+  .map(buildVercelPreviewRegex)
+  .filter(Boolean)
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true)
-      }
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Mobile & server-to-server requests
+    if (!origin) return callback(null, true)
 
-      console.log('Blocked by CORS:', origin)
-      return callback(null, false)
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-)
+    const normalized = String(origin).replace(/\/+$/, '')
+    if (allowAllOrigins) return callback(null, true)
+    if (allowedOrigins.has(normalized)) return callback(null, true)
+    if (vercelPreviewRegexes.some((re) => re.test(normalized))) return callback(null, true)
 
-// Preflight
-app.options('*', cors())
+    console.log('Blocked by CORS:', normalized)
+    return callback(null, false)
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'x-clerk-auth',
+    'x-clerk-session',
+  ],
+}
 
-// Handle preflight requests
-app.options('*', cors())
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 
 
 app.use(express.json({ limit: '20mb' }))
@@ -82,9 +111,28 @@ if (publicFeedRouter) {
 
 // Health
 app.get('/health', (req, res) => {
-  res.json({ ok: true, uptime: process.uptime() })
+  const ready = mongoose.connection.readyState === 1
+  res.json({
+    ok: true,
+    ready,
+    dbState: mongoose.connection.readyState, // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+    uptime: process.uptime(),
+  })
 })
-console.log()
+
+// Readiness (useful for deploy health checks)
+app.get('/ready', (req, res) => {
+  const ready = mongoose.connection.readyState === 1
+  if (!ready) return res.status(503).json({ ok: false, ready: false })
+  return res.json({ ok: true, ready: true })
+})
+
+// If DB is down, fail fast instead of buffering Mongoose operations.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) return next()
+  if (mongoose.connection.readyState === 1) return next()
+  return res.status(503).json({ error: 'Database not ready' })
+})
 // Routes (protected)
 const requireAuthMw = Clerk.requireAuth ? Clerk.requireAuth() : (Clerk.ClerkExpressRequireAuth ? Clerk.ClerkExpressRequireAuth() : null)
 if (!requireAuthMw) {
@@ -114,20 +162,23 @@ if (!requireAuthMw) {
   app.use('/api/schedule', requireAuthMw, scheduleRouter)
 }
 
-async function start() {
-  try {
-    if (!MONGODB_URI) throw new Error('Missing MONGODB_URI')
-    await mongoose.connect(MONGODB_URI)
-    console.log('MongoDB connected')
-
-    app.listen(PORT, () => {
-      console.log(`Server listening on http://localhost:${PORT}`)
-    })
-  } catch (err) {
-    console.error('Failed to start server:', err)
-    process.exit(1)
+async function connectMongoWithRetry() {
+  if (!MONGODB_URI) {
+    console.error('Missing MONGODB_URI (server will run but DB will stay disconnected)')
+    return
   }
 
+  try {
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 10_000 })
+    console.log('MongoDB connected')
+  } catch (err) {
+    console.error('MongoDB connection failed (will retry):', err?.message || err)
+    setTimeout(connectMongoWithRetry, 5_000)
+  }
 }
 
-start()
+// Start HTTP server immediately (deploy platforms expect a bound port quickly).
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`)
+  void connectMongoWithRetry()
+})

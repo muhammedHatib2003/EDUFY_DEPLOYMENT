@@ -4,6 +4,9 @@
   "private": true,
   "main": "src/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js"
