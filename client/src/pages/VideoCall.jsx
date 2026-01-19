@@ -16,7 +16,24 @@ import { downloadSummaryPdf } from '../utils/downloadSummaryPdf'
 
 const SUMMARY_STORAGE_KEY = 'graedufy_voice_summaries'
 // HashRouter-safe external URL (path-based URLs 404 on Vercel without rewrites).
-const WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/#/call/'
+const DEFAULT_WEB_CALL_BASE = 'https://edufy-deployment.vercel.app/#/call/'
+
+function ensureTrailingSlash(url) {
+  return url.endsWith('/') ? url : `${url}/`
+}
+
+function getWebCallBase() {
+  const envBase = import.meta?.env?.VITE_WEB_CALL_BASE
+  if (envBase) return ensureTrailingSlash(String(envBase))
+
+  // On normal web deployments, prefer the current origin.
+  if (typeof window !== 'undefined') {
+    const origin = window.location?.origin || ''
+    if (/^https?:\/\//i.test(origin)) return `${origin}/#/call/`
+  }
+
+  return DEFAULT_WEB_CALL_BASE
+}
 
 // Web Speech API: only rely on Chrome / Edge for production usage.
 function isChromeOrEdge() {
@@ -103,12 +120,13 @@ export default function VideoCall({ onClose, callId: callIdProp, callName: callN
     !!window?.Capacitor?.isNativePlatform?.()
   const shouldOpenExternally = isElectron || isCapacitor
   const externalUrl = useMemo(() => {
+    const base = getWebCallBase()
     const callId = encodeURIComponent(callIdProp || 'graedufy-demo')
     const sp = new URLSearchParams()
     if (mode) sp.set('mode', mode)
     if (callNameProp) sp.set('name', callNameProp)
     const qs = sp.toString()
-    return `${WEB_CALL_BASE}${callId}${qs ? `?${qs}` : ''}`
+    return `${base}${callId}${qs ? `?${qs}` : ''}`
   }, [callIdProp, callNameProp, mode])
   const [externalOpened, setExternalOpened] = useState(false)
 
